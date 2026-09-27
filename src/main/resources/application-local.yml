@@ -1,0 +1,11 @@
+app:
+  security:
+    jwt:
+      secret: ${APP_JWT_SECRET:local-development-only-secret-change-before-deployment-0123456789}
+  seed:
+    enabled: ${APP_SEED_ENABLED:true}
+    admin:
+      username: ${APP_SEED_ADMIN_USERNAME:admin}
+      password: ${APP_SEED_ADMIN_PASSWORD:ChangeMe123!}
+      email: ${APP_SEED_ADMIN_EMAIL:admin@example.local}
+      full-name: ${APP_SEED_ADMIN_FULL_NAME:Administrator}

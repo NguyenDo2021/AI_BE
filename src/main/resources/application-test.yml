@@ -1,0 +1,21 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:frontend_base;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+app:
+  security:
+    jwt:
+      secret: test-secret-that-is-long-enough-for-hs256-signing
+      access-token-minutes: 15
+      refresh-token-days: 7
+  cors:
+    allowed-origins: http://localhost:5173
+  seed:
+    enabled: false
