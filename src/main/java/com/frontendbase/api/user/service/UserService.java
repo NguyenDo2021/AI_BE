@@ -7,11 +7,18 @@ import com.frontendbase.api.user.dto.UserResponse;
 import com.frontendbase.api.user.entity.UserAccount;
 import com.frontendbase.api.user.mapper.UserMapper;
 import com.frontendbase.api.user.repository.UserRepository;
+import java.time.Instant;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,8 +49,12 @@ public class UserService {
         Page<UserAccount> result = userRepository.findAll(
                 UserSpecifications.matches(keyword, status),
                 PageRequest.of(page - 1, pageSize, Sort.by(Sort.Direction.DESC, "createdAt")));
+        var users = result.getContent();
+        Map<UUID, String> updaterNames = resolveUpdaterNames(users);
         return new UserPageResponse(
-                result.getContent().stream().map(userMapper::toResponse).toList(),
+            users.stream()
+                .map(user -> userMapper.toResponse(user, updaterNames.get(user.getUpdatedBy())))
+                .toList(),
                 result.getTotalElements(),
                 page,
                 pageSize);
@@ -51,7 +62,7 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public UserResponse getUser(UUID id) {
-        return userMapper.toResponse(findUser(id));
+        return toResponse(findUser(id));
     }
 
     @Transactional
@@ -59,7 +70,7 @@ public class UserService {
         ensureUnique(payload, null);
         UserAccount user = userMapper.toNewEntity(payload);
         user.setPasswordHash(passwordEncoder.encode("Abc@12345"));
-        return userMapper.toResponse(userRepository.save(user));
+        return toResponse(userRepository.save(user));
     }
 
     @Transactional
@@ -67,7 +78,9 @@ public class UserService {
         UserAccount user = findUser(id);
         ensureUnique(payload, id);
         userMapper.updateEntity(payload, user);
-        return userMapper.toResponse(userRepository.save(user));
+        user.setUpdatedBy(currentUserId());
+        user.setUpdatedAt(Instant.now());
+        return toResponse(userRepository.save(user));
     }
 
     @Transactional
@@ -79,6 +92,34 @@ public class UserService {
     private UserAccount findUser(UUID id) {
         return userRepository.findById(id).orElseThrow(
                 () -> new ApiException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "Không tìm thấy người dùng"));
+    }
+
+    private UUID currentUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()
+                || !(authentication.getPrincipal() instanceof String userId)) {
+            return null;
+        }
+        return UUID.fromString(userId);
+    }
+
+    private UserResponse toResponse(UserAccount user) {
+        String updaterName = user.getUpdatedBy() == null
+                ? null
+                : userRepository.findById(user.getUpdatedBy()).map(UserAccount::getFullName).orElse(null);
+        return userMapper.toResponse(user, updaterName);
+    }
+
+    private Map<UUID, String> resolveUpdaterNames(java.util.List<UserAccount> users) {
+        Set<UUID> updaterIds = users.stream()
+                .map(UserAccount::getUpdatedBy)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (updaterIds.isEmpty()) {
+            return Map.of();
+        }
+        return userRepository.findAllById(updaterIds).stream()
+                .collect(Collectors.toMap(UserAccount::getId, UserAccount::getFullName, (first, ignored) -> first));
     }
 
     private void ensureUnique(UserPayload payload, UUID currentId) {

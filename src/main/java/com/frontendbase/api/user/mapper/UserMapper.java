@@ -20,7 +20,7 @@ public class UserMapper {
         apply(payload, user);
     }
 
-    public UserResponse toResponse(UserAccount user) {
+    public UserResponse toResponse(UserAccount user, String updatedByName) {
         return new UserResponse(
                 user.getId(),
                 user.getUsername(),
@@ -28,8 +28,10 @@ public class UserMapper {
                 user.getEmail(),
                 user.getPhone(),
                 user.getStatus(),
-                user.getCreatedAt()
-        );
+                user.getCreatedAt(),
+                user.getUpdatedBy(),
+                updatedByName,
+                user.getUpdatedAt());
     }
 
     private void apply(UserPayload payload, UserAccount user) {
