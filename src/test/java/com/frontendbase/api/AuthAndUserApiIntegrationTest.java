@@ -74,7 +74,8 @@ class AuthAndUserApiIntegrationTest {
                 adminRole.setName("Test administrator");
 
                 for (String code : new String[] {
-                                "DASHBOARD_VIEW", "USER_VIEW", "USER_CREATE", "USER_UPDATE", "USER_DELETE", "ROLE_VIEW"
+                                "DASHBOARD_VIEW", "USER_VIEW", "USER_CREATE", "USER_UPDATE", "USER_DELETE",
+                                "ROLE_VIEW", "ROLE_CREATE", "ROLE_UPDATE", "ROLE_DELETE"
                 }) {
                         Permission permission = new Permission();
                         permission.setId(UUID.randomUUID());
@@ -168,7 +169,10 @@ class AuthAndUserApiIntegrationTest {
 
                 mockMvc.perform(get("/roles").header("Authorization", bearer(accessToken)))
                                 .andExpect(status().isOk())
-                                .andExpect(jsonPath("$[0].code").value("TEST_ADMIN"));
+                                .andExpect(jsonPath("$.items[0].code").value("TEST_ADMIN"))
+                                .andExpect(jsonPath("$.total").value(1))
+                                .andExpect(jsonPath("$.page").value(1))
+                                .andExpect(jsonPath("$.pageSize").value(10));
 
                 mockMvc.perform(delete("/users/{id}", newUserId).header("Authorization", bearer(accessToken)))
                                 .andExpect(status().isNoContent());
@@ -227,6 +231,148 @@ class AuthAndUserApiIntegrationTest {
                 mockMvc.perform(get("/users?page=0&pageSize=500")
                                 .header("Authorization", bearer(accessToken)))
                                 .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        void roleCrudSupportsSearchAndEnforcesBusinessRules() throws Exception {
+                String accessToken = loginAccessToken();
+                String authorization = bearer(accessToken);
+                UUID assignedRoleId = roleRepository.findAll().get(0).getId();
+
+                mockMvc.perform(get("/roles?page=1&size=1&keyword=Test&status=1")
+                                .header("Authorization", authorization))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.items[0].code").value("TEST_ADMIN"))
+                                .andExpect(jsonPath("$.total").value(1))
+                                .andExpect(jsonPath("$.pageSize").value(1));
+
+                mockMvc.perform(get("/roles/{id}", assignedRoleId).header("Authorization", authorization))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.id").value(assignedRoleId.toString()))
+                                .andExpect(jsonPath("$.createdAt").isNotEmpty());
+
+                String createdJson = mockMvc.perform(post("/roles")
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                                {
+                                                        "name": "  Nhân viên  ",
+                                                        "code": "  staff  ",
+                                                        "description": "  Nhân viên hệ thống  ",
+                                                        "status": 1
+                                                }
+                                                """))
+                                .andExpect(status().isCreated())
+                                .andExpect(jsonPath("$.name").value("Nhân viên"))
+                                .andExpect(jsonPath("$.code").value("STAFF"))
+                                .andExpect(jsonPath("$.description").value("Nhân viên hệ thống"))
+                                .andExpect(jsonPath("$.status").value(1))
+                                .andReturn().getResponse().getContentAsString();
+                UUID createdId = UUID.fromString(objectMapper.readTree(createdJson).get("id").asText());
+
+                mockMvc.perform(post("/roles")
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                                {"name":"Other staff","code":"STAFF","description":null,"status":1}
+                                                """))
+                                .andExpect(status().isConflict())
+                                .andExpect(jsonPath("$.code").value("ROLE_CODE_EXISTS"));
+
+                mockMvc.perform(post("/roles")
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                                {"name":"   ","code":"bad-code","description":"x","status":4}
+                                                """))
+                                .andExpect(status().isBadRequest())
+                                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+                mockMvc.perform(put("/roles/{id}", createdId)
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                                {
+                                                        "name":"Nhân viên cập nhật",
+                                                        "code":"staff_v2",
+                                                        "description":"Đã cập nhật",
+                                                        "status":0
+                                                }
+                                                """))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.code").value("STAFF_V2"))
+                                .andExpect(jsonPath("$.status").value(0))
+                                .andExpect(jsonPath("$.updatedAt").isNotEmpty());
+
+                mockMvc.perform(get("/roles?name=cập nhật&code=V2&status=0&page=1&pageSize=10")
+                                .header("Authorization", authorization))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.total").value(1))
+                                .andExpect(jsonPath("$.items[0].id").value(createdId.toString()));
+
+                mockMvc.perform(put("/roles/{id}", UUID.randomUUID())
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                                {"name":"Missing","code":"MISSING","description":null,"status":1}
+                                                """))
+                                .andExpect(status().isNotFound())
+                                .andExpect(jsonPath("$.code").value("ROLE_NOT_FOUND"));
+
+                mockMvc.perform(put("/roles/{id}", createdId)
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                                {"name":"Changed","code":"TEST_ADMIN","description":null,"status":1}
+                                                """))
+                                .andExpect(status().isConflict())
+                                .andExpect(jsonPath("$.code").value("ROLE_CODE_EXISTS"));
+
+                mockMvc.perform(delete("/roles/{id}", assignedRoleId).header("Authorization", authorization))
+                                .andExpect(status().isConflict())
+                                .andExpect(jsonPath("$.code").value("ROLE_IN_USE"));
+
+                Role systemAdminRole = new Role();
+                systemAdminRole.setId(UUID.randomUUID());
+                systemAdminRole.setName("System administrator");
+                systemAdminRole.setCode("ADMIN");
+                systemAdminRole = roleRepository.save(systemAdminRole);
+                mockMvc.perform(delete("/roles/{id}", systemAdminRole.getId())
+                                .header("Authorization", authorization))
+                                .andExpect(status().isConflict())
+                                .andExpect(jsonPath("$.code").value("SYSTEM_ROLE_PROTECTED"));
+
+                mockMvc.perform(delete("/roles/{id}", createdId).header("Authorization", authorization))
+                                .andExpect(status().isNoContent());
+                mockMvc.perform(get("/roles/{id}", createdId).header("Authorization", authorization))
+                                .andExpect(status().isNotFound());
+                mockMvc.perform(delete("/roles/{id}", UUID.randomUUID()).header("Authorization", authorization))
+                                .andExpect(status().isNotFound());
+
+                String noPermissionToken = jwtService.createAccessToken(
+                                userRepository.findByUsernameIgnoreCase("integration-admin").orElseThrow()
+                                                .getId().toString(),
+                                "integration-admin",
+                                List.of());
+                String noPermission = bearer(noPermissionToken);
+                mockMvc.perform(get("/roles").header("Authorization", noPermission))
+                                .andExpect(status().isForbidden());
+                mockMvc.perform(post("/roles")
+                                .header("Authorization", noPermission)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                                {"name":"Denied","code":"DENIED","description":null,"status":1}
+                                                """))
+                                .andExpect(status().isForbidden());
+                mockMvc.perform(put("/roles/{id}", createdId)
+                                .header("Authorization", noPermission)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                                {"name":"Denied","code":"DENIED","description":null,"status":1}
+                                                """))
+                                .andExpect(status().isForbidden());
+                mockMvc.perform(delete("/roles/{id}", createdId).header("Authorization", noPermission))
+                                .andExpect(status().isForbidden());
         }
 
         private String login() throws Exception {

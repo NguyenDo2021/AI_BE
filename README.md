@@ -6,8 +6,8 @@ Spring Boot REST API được thiết kế theo contract của frontend Vue hi�
 
 - Vue 3 + TypeScript strict; Ant Design Vue; Pinia; Vue Router; Axios; Vue I18n; Dayjs.
 - Auth Pinia lưu access/refresh token trong `localStorage`. Login và refresh dùng Axios trực tiếp, nhận token response không bọc envelope; `/auth/me` dùng Axios instance có `Authorization: Bearer`.
-- Route permissions: `DASHBOARD_VIEW`, `USER_VIEW`, `USER_CREATE`, `USER_UPDATE`, `USER_DELETE`, `ROLE_VIEW`.
-- Module hiện có: login, dashboard, user CRUD, role read-only, 403/404. Không có API logout, department, upload/download hay API load menu.
+- Route permissions: `DASHBOARD_VIEW`, `USER_VIEW`, `USER_CREATE`, `USER_UPDATE`, `USER_DELETE`, `ROLE_VIEW`, `ROLE_CREATE`, `ROLE_UPDATE`, `ROLE_DELETE`.
+- Module hiện có: login, dashboard, user CRUD, role CRUD, 403/404. Không có API logout, department, upload/download hay API load menu.
 - Base URL development: `http://localhost:8080/api`; frontend Vite mặc định `http://localhost:5173`.
 
 ## API matrix
@@ -22,11 +22,76 @@ Spring Boot REST API được thiết kế theo contract của frontend Vue hi�
 | `createUser` | `POST /api/users` | `{ username, fullName, email, phone?, status }` | `User` (201) | `USER_CREATE` |
 | `updateUser` | `PUT /api/users/{id}` | Same user payload | `User` | `USER_UPDATE` |
 | `deleteUser` | `DELETE /api/users/{id}` | UUID string path ID | Empty body (204) | `USER_DELETE` |
-| `getRoleList` | `GET /api/roles` | None | `Role[]` (direct array, not page/envelope) | `ROLE_VIEW` |
+| Role list | `GET /api/roles?page=&pageSize=&keyword=&name=&code=&status=` | 1-based page, pageSize (1-100); `size` is accepted as an alias | `{ items: Role[], total, page, pageSize }` | `ROLE_VIEW` |
+| Role detail | `GET /api/roles/{id}` | UUID string path ID | `Role` | `ROLE_VIEW` |
+| Create role | `POST /api/roles` | `RolePayload` | `Role` (201) | `ROLE_CREATE` |
+| Update role | `PUT /api/roles/{id}` | UUID and `RolePayload` | `Role` | `ROLE_UPDATE` |
+| Delete role | `DELETE /api/roles/{id}` | UUID string path ID | Empty body (204) | `ROLE_DELETE` |
 
-`User` is `{ id: string, username, fullName, email, phone?, status: number, createdAt?: ISO-8601 string }`. `Role` is `{ id: string, name, code, description? }`. Login, refresh, me, list, detail, and role responses are direct JSON values; they are not wrapped in `{ data: ... }`. Error bodies are `{ timestamp, status, code, message, details }`, so the current Axios error normalizer can consume `message`, `code`, and `details`.
+`User` is `{ id: string, username, fullName, email, phone?, status: number, createdAt?: ISO-8601 string }`. `Role` is `{ id: string, name, code, description?, status: number, createdAt: ISO-8601 string, updatedAt?: ISO-8601 string }`. Login, refresh, me, list, and detail responses are direct JSON values; they are not wrapped in `{ data: ... }`. Error bodies are `{ timestamp, status, code, message, details }`, so the current Axios error normalizer can consume `message`, `code`, and `details`.
 
-Error status compatibility: 400 validation/request, 401 missing/invalid/expired session, 403 permission denied, 404 missing user, 500 unexpected server error. Duplicate account fields use 409 Conflict.
+Error status compatibility: 400 validation/request, 401 missing/invalid/expired session, 403 permission denied, 404 missing user or role, 500 unexpected server error. Duplicate account or role fields use 409 Conflict.
+
+## Role management API contract
+
+All endpoints below are under `/api` because of the configured servlet context path and require a Bearer access token.
+
+### List roles
+
+`GET /api/roles?page=1&pageSize=10&keyword=admin&name=&code=&status=1`
+
+Parameters are optional. `page` is 1-based (default `1`); `pageSize` is `1..100` (default `10`). `size` may be used instead of `pageSize`. `keyword` and `name` search role names case-insensitively; `code` is a case-insensitive contains filter; `status` is `0` or `1`.
+
+```json
+{
+	"items": [
+		{
+			"id": "00000000-0000-0000-0000-000000000001",
+			"name": "Administrator",
+			"code": "ADMIN",
+			"description": "Full access",
+			"status": 1,
+			"createdAt": "2026-09-30T00:00:00Z"
+		}
+	],
+	"total": 1,
+	"page": 1,
+	"pageSize": 10
+}
+```
+
+### Role detail
+
+`GET /api/roles/{id}` returns the Role JSON object shown above (HTTP 200), or `ROLE_NOT_FOUND` (HTTP 404).
+
+### Create role
+
+`POST /api/roles` requires `ROLE_CREATE` and returns the created Role (HTTP 201).
+
+```json
+{
+	"name": "Nhân viên",
+	"code": "STAFF",
+	"description": "Nhân viên hệ thống",
+	"status": 1
+}
+```
+
+### Update role
+
+`PUT /api/roles/{id}` requires `ROLE_UPDATE` and accepts the same complete JSON payload as create. It returns the updated Role (HTTP 200); it never inserts a replacement. `ADMIN` cannot have its code changed.
+
+### Delete role
+
+`DELETE /api/roles/{id}` requires `ROLE_DELETE`. Success returns HTTP 204 with an empty body. The `ADMIN` role and any role assigned to at least one User cannot be deleted (HTTP 409).
+
+### Validation and errors
+
+`name` is required, trimmed, non-blank, and at most 100 characters. `code` is required, trimmed, normalized to uppercase, at most 80 characters, and must begin with a letter followed by letters, digits, or underscores. `description` is optional and at most 500 characters. `status` is required and must be `0` or `1`. Names and codes are unique case-insensitively.
+
+Validation failures return HTTP 400 with `code: VALIDATION_ERROR` and field messages in `details`. All API errors use `{ "timestamp", "status", "code", "message", "details" }`. Relevant statuses: 400 invalid request/validation/pagination, 401 missing or invalid authentication, 403 missing permission (`FORBIDDEN`), 404 missing role (`ROLE_NOT_FOUND`), 409 duplicate name/code (`ROLE_NAME_EXISTS`/`ROLE_CODE_EXISTS`), protected ADMIN (`SYSTEM_ROLE_PROTECTED`), or role in use (`ROLE_IN_USE`), and 500 unexpected server error.
+
+Role list/detail use `ROLE_VIEW`; create, update, and delete use `ROLE_CREATE`, `ROLE_UPDATE`, and `ROLE_DELETE`. Flyway migration `V3__complete_role_management.sql` adds Role status/timestamps and registers these CRUD permissions, assigning them to the existing ADMIN role. The migration preserves existing role assignments and role data.
 
 ## Architecture and persistence
 
@@ -35,13 +100,13 @@ Packages are organized by domain (`auth`, `user`, `role`) with shared `security`
 | Frontend feature/API | Entity/table | Notes |
 |---|---|---|
 | Login, `/auth/me`, user CRUD | `UserAccount` / `users` | UUID ID, case-preserving username, `full_name`, normalized unique username/email keys, numeric status, ISO instant createdAt; nullable password hash because create-user form has no password field |
-| Permission checks and `/roles` | `Role` / `roles` | Role response contains exactly the fields the UI consumes |
-| `AuthUser.permissions` | `Permission` / `permissions` | Only the six permission codes currently referenced in frontend are seeded |
+| Permission checks and `/roles` | `Role` / `roles` | Role CRUD; status and timestamps are persisted and returned |
+| `AuthUser.permissions` | `Permission` / `permissions` | Role view/create/update/delete permissions are seeded for the existing ADMIN role |
 | User-to-role authorization | `user_roles` | Many-to-many relationship |
 | Role permission authorization | `role_permissions` | Many-to-many relationship |
 | `/auth/refresh` | `RefreshToken` / `refresh_tokens` | Stores SHA-256 hashes, expiration and revocation time; raw tokens are returned only once |
 
-`V1__create_identity_and_rbac_schema.sql` creates the schema and seeds only current FE permission codes plus `ADMIN` and `USER_MANAGER` role definitions. A local-profile runner creates the configurable admin and attaches `ADMIN`; production profile never seeds accounts.
+`V1__create_identity_and_rbac_schema.sql` creates the initial schema and seeds the existing permission codes plus `ADMIN` and `USER_MANAGER` role definitions. `V3__complete_role_management.sql` adds Role status/timestamps and the CRUD permissions. A local-profile runner creates the configurable admin and attaches `ADMIN`; production profile never seeds accounts.
 
 ## Authentication and permission flow
 
@@ -98,7 +163,7 @@ The automated suite uses H2 in PostgreSQL compatibility mode and runs the Flyway
 2. Start the existing frontend from the project root using `pnpm dev`.
 3. Open `http://localhost:5173/login`; use the local seed admin credentials.
 4. Confirm `/auth/me` populates the store and `/dashboard` loads.
-5. Open `/system/user` to exercise server-side search/filter/pagination and CRUD; open `/system/role` to load the role array.
+5. Open `/system/user` to exercise server-side search/filter/pagination and CRUD; role CRUD APIs are available at `/api/roles` for an authorized client.
 6. To exercise refresh, use a short `APP_ACCESS_TOKEN_MINUTES` value and make a protected API call after expiry; Axios refreshes and retries it.
 7. Sign out in the header (frontend-only local token removal); the next protected route returns to `/login`.
 

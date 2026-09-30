@@ -52,9 +52,10 @@ public class UserService {
         var users = result.getContent();
         Map<UUID, String> updaterNames = resolveUpdaterNames(users);
         return new UserPageResponse(
-            users.stream()
-                .map(user -> userMapper.toResponse(user, updaterNames.get(user.getUpdatedBy())))
-                .toList(),
+                users.stream()
+                        .map(user -> userMapper.toResponse(user,
+                                user.getUpdatedBy() != null ? updaterNames.get(user.getUpdatedBy()) : null))
+                        .toList(),
                 result.getTotalElements(),
                 page,
                 pageSize);
