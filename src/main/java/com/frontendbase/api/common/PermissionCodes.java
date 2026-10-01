@@ -12,6 +12,10 @@ public final class PermissionCodes {
     public static final String ROLE_CREATE = "ROLE_CREATE";
     public static final String ROLE_UPDATE = "ROLE_UPDATE";
     public static final String ROLE_DELETE = "ROLE_DELETE";
+    public static final String PERMISSION_VIEW = "PERMISSION_VIEW";
+    public static final String PERMISSION_CREATE = "PERMISSION_CREATE";
+    public static final String PERMISSION_UPDATE = "PERMISSION_UPDATE";
+    public static final String PERMISSION_DELETE = "PERMISSION_DELETE";
 
     public static final Set<String> ALL = Set.of(
             DASHBOARD_VIEW,
@@ -22,7 +26,11 @@ public final class PermissionCodes {
             ROLE_VIEW,
             ROLE_CREATE,
             ROLE_UPDATE,
-            ROLE_DELETE
+            ROLE_DELETE,
+            PERMISSION_VIEW,
+            PERMISSION_CREATE,
+            PERMISSION_UPDATE,
+            PERMISSION_DELETE
     );
 
     private PermissionCodes() {

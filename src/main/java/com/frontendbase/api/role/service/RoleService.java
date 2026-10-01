@@ -5,11 +5,19 @@ import com.frontendbase.api.role.dto.RolePageResponse;
 import com.frontendbase.api.role.dto.RolePayload;
 import com.frontendbase.api.role.entity.Role;
 import com.frontendbase.api.role.repository.RoleRepository;
+import com.frontendbase.api.security.dto.PermissionResponse;
+import com.frontendbase.api.security.entity.Permission;
+import com.frontendbase.api.security.repository.PermissionRepository;
 import com.frontendbase.api.user.repository.UserRepository;
 import com.frontendbase.api.common.exception.ApiException;
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -23,10 +31,15 @@ public class RoleService {
 
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
+    private final PermissionRepository permissionRepository;
 
-    public RoleService(RoleRepository roleRepository, UserRepository userRepository) {
+    public RoleService(
+            RoleRepository roleRepository,
+            UserRepository userRepository,
+            PermissionRepository permissionRepository) {
         this.roleRepository = roleRepository;
         this.userRepository = userRepository;
+        this.permissionRepository = permissionRepository;
     }
 
     @Transactional(readOnly = true)
@@ -52,6 +65,57 @@ public class RoleService {
     @Transactional(readOnly = true)
     public RoleResponse getRole(UUID id) {
         return toResponse(findRole(id));
+    }
+
+    @Transactional(readOnly = true)
+    public List<PermissionResponse> getRolePermissions(UUID id) {
+        return toPermissionResponses(findRole(id).getPermissions());
+    }
+
+    @Transactional
+    public List<PermissionResponse> updateRolePermissions(UUID id, List<UUID> requestedPermissionIds) {
+        Role role = findRole(id);
+        ensureRolePermissionsAreMutable(role);
+
+        Set<UUID> requestedPermissionIdSet = new HashSet<>(requestedPermissionIds);
+        if (requestedPermissionIdSet.size() != requestedPermissionIds.size()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "DUPLICATE_PERMISSION_ID",
+                    "Danh sách permission có ID bị trùng");
+        }
+
+        List<Permission> requestedPermissions = permissionRepository.findAllById(requestedPermissionIds);
+        Set<UUID> foundPermissionIds = requestedPermissions.stream()
+                .map(Permission::getId)
+                .collect(Collectors.toSet());
+        requestedPermissionIds.stream()
+                .filter(permissionId -> !foundPermissionIds.contains(permissionId))
+                .findFirst()
+                .ifPresent(permissionId -> {
+                    throw new ApiException(HttpStatus.NOT_FOUND, "PERMISSION_NOT_FOUND", "Không tìm thấy quyền");
+                });
+        requestedPermissions.stream()
+                .filter(permission -> permission.getStatus() != 1)
+                .findFirst()
+                .ifPresent(permission -> {
+                    throw new ApiException(HttpStatus.CONFLICT, "PERMISSION_INACTIVE",
+                            "Không thể gán quyền đã bị vô hiệu hóa");
+                });
+
+        role.setPermissions(new HashSet<>(requestedPermissions));
+        return toPermissionResponses(role.getPermissions());
+    }
+
+    @Transactional
+    public void removeRolePermission(UUID roleId, UUID permissionId) {
+        Role role = findRole(roleId);
+        ensureRolePermissionsAreMutable(role);
+        permissionRepository.findById(permissionId).orElseThrow(
+                () -> new ApiException(HttpStatus.NOT_FOUND, "PERMISSION_NOT_FOUND", "Không tìm thấy quyền"));
+        boolean removed = role.getPermissions().removeIf(permission -> permission.getId().equals(permissionId));
+        if (!removed) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "ROLE_PERMISSION_NOT_FOUND",
+                    "Vai trò chưa được gán quyền này");
+        }
     }
 
     @Transactional
@@ -98,6 +162,13 @@ public class RoleService {
                 () -> new ApiException(HttpStatus.NOT_FOUND, "ROLE_NOT_FOUND", "Không tìm thấy vai trò"));
     }
 
+    private void ensureRolePermissionsAreMutable(Role role) {
+        if ("ADMIN".equalsIgnoreCase(role.getCode())) {
+            throw new ApiException(HttpStatus.CONFLICT, "SYSTEM_ROLE_PROTECTED",
+                    "Không thể thay đổi quyền của vai trò ADMIN");
+        }
+    }
+
     private void ensureUnique(String name, String code, UUID currentId) {
         boolean duplicateName = currentId == null
                 ? roleRepository.existsByNameIgnoreCase(name)
@@ -124,6 +195,20 @@ public class RoleService {
     private RoleResponse toResponse(Role role) {
         return new RoleResponse(role.getId(), role.getName(), role.getCode(), role.getDescription(),
                 role.getStatus(), role.getCreatedAt(), role.getUpdatedAt());
+    }
+
+    private List<PermissionResponse> toPermissionResponses(Set<Permission> permissions) {
+        return permissions.stream()
+                .sorted(Comparator.comparing(Permission::getCode, String.CASE_INSENSITIVE_ORDER))
+                .map(permission -> new PermissionResponse(
+                        permission.getId(),
+                        permission.getName(),
+                        permission.getCode(),
+                        permission.getDescription(),
+                        permission.getStatus(),
+                        permission.getCreatedAt(),
+                        permission.getUpdatedAt()))
+                .toList();
     }
 
     private String normalizeCode(String code) {

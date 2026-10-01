@@ -3,11 +3,14 @@ package com.frontendbase.api.role.controller;
 import com.frontendbase.api.role.dto.RoleResponse;
 import com.frontendbase.api.role.dto.RolePageResponse;
 import com.frontendbase.api.role.dto.RolePayload;
+import com.frontendbase.api.role.dto.RolePermissionsPayload;
 import com.frontendbase.api.role.service.RoleService;
+import com.frontendbase.api.security.dto.PermissionResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.util.UUID;
+import java.util.List;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -52,6 +55,27 @@ public class RoleController {
     @PreAuthorize("hasAuthority('ROLE_VIEW')")
     public RoleResponse getRole(@PathVariable UUID id) {
         return roleService.getRole(id);
+    }
+
+    @GetMapping("/{id}/permissions")
+    @PreAuthorize("hasAuthority('ROLE_VIEW')")
+    public List<PermissionResponse> getRolePermissions(@PathVariable UUID id) {
+        return roleService.getRolePermissions(id);
+    }
+
+    @PutMapping("/{id}/permissions")
+    @PreAuthorize("hasAuthority('ROLE_UPDATE')")
+    public List<PermissionResponse> updateRolePermissions(
+            @PathVariable UUID id,
+            @Valid @RequestBody RolePermissionsPayload payload) {
+        return roleService.updateRolePermissions(id, payload.permissionIds());
+    }
+
+    @DeleteMapping("/{roleId}/permissions/{permissionId}")
+    @PreAuthorize("hasAuthority('ROLE_UPDATE')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removeRolePermission(@PathVariable UUID roleId, @PathVariable UUID permissionId) {
+        roleService.removeRolePermission(roleId, permissionId);
     }
 
     @PostMapping

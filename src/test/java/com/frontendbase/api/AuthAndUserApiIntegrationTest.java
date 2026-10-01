@@ -76,12 +76,15 @@ class AuthAndUserApiIntegrationTest {
 
                 for (String code : new String[] {
                                 "DASHBOARD_VIEW", "USER_VIEW", "USER_CREATE", "USER_UPDATE", "USER_DELETE",
-                                "ROLE_VIEW", "ROLE_CREATE", "ROLE_UPDATE", "ROLE_DELETE"
+                                "ROLE_VIEW", "ROLE_CREATE", "ROLE_UPDATE", "ROLE_DELETE",
+                                "PERMISSION_VIEW", "PERMISSION_CREATE", "PERMISSION_UPDATE", "PERMISSION_DELETE"
                 }) {
                         Permission permission = new Permission();
                         permission.setId(UUID.randomUUID());
+                        permission.setName(code);
                         permission.setCode(code);
                         permission.setDescription(code);
+                        permission.setStatus((short) 1);
                         adminRole.getPermissions().add(permissionRepository.save(permission));
                 }
                 roleRepository.save(adminRole);
@@ -486,6 +489,209 @@ class AuthAndUserApiIntegrationTest {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"roleIds\":[]}"))
                                 .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void permissionCrudSupportsSearchValidationAndAuthorization() throws Exception {
+                String authorization = bearer(loginAccessToken());
+                Permission existing = permissionRepository.findAll().stream()
+                                .filter(permission -> "USER_VIEW".equals(permission.getCode()))
+                                .findFirst().orElseThrow();
+
+                mockMvc.perform(get("/permissions?keyword=user&page=1&pageSize=10")
+                                .header("Authorization", authorization))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.items").isArray())
+                                .andExpect(jsonPath("$.items[0].name").isNotEmpty())
+                                .andExpect(jsonPath("$.items[0].createdAt").isNotEmpty())
+                                .andExpect(jsonPath("$.page").value(1));
+                mockMvc.perform(get("/permissions/{id}", existing.getId())
+                                .header("Authorization", authorization))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.code").value("USER_VIEW"))
+                                .andExpect(jsonPath("$.status").value(1));
+
+                String createdResponse = mockMvc.perform(post("/permissions")
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                                {"name":"  View invoices  ","code":"  invoice_view  ",
+                                                 "description":"  Read invoice data  ","status":1}
+                                                """))
+                                .andExpect(status().isCreated())
+                                .andExpect(jsonPath("$.name").value("View invoices"))
+                                .andExpect(jsonPath("$.code").value("INVOICE_VIEW"))
+                                .andExpect(jsonPath("$.description").value("Read invoice data"))
+                                .andExpect(jsonPath("$.createdAt").isNotEmpty())
+                                .andReturn().getResponse().getContentAsString();
+                UUID createdId = UUID.fromString(objectMapper.readTree(createdResponse).get("id").asText());
+
+                mockMvc.perform(post("/permissions")
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                                {"name":"Duplicate","code":"user_view",
+                                                 "description":"Duplicate code","status":1}
+                                                """))
+                                .andExpect(status().isConflict())
+                                .andExpect(jsonPath("$.code").value("PERMISSION_CODE_EXISTS"));
+                mockMvc.perform(post("/permissions")
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                                {"name":"","code":"bad-code","description":"x","status":4}
+                                                """))
+                                .andExpect(status().isBadRequest())
+                                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+                mockMvc.perform(put("/permissions/{id}", createdId)
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                                {"name":"Invoice reader","code":"INVOICE_VIEW",
+                                                 "description":"Updated description","status":0}
+                                                """))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.name").value("Invoice reader"))
+                                .andExpect(jsonPath("$.status").value(0))
+                                .andExpect(jsonPath("$.updatedAt").isNotEmpty());
+                mockMvc.perform(get("/permissions?code=INVOICE&status=0&page=1")
+                                .header("Authorization", authorization))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.total").value(1))
+                                .andExpect(jsonPath("$.items[0].id").value(createdId.toString()));
+
+                mockMvc.perform(delete("/permissions/{id}", createdId).header("Authorization", authorization))
+                                .andExpect(status().isNoContent());
+                mockMvc.perform(get("/permissions/{id}", createdId).header("Authorization", authorization))
+                                .andExpect(status().isNotFound())
+                                .andExpect(jsonPath("$.code").value("PERMISSION_NOT_FOUND"));
+                mockMvc.perform(get("/permissions"))
+                                .andExpect(status().isUnauthorized());
+
+                String userId = userRepository.findByUsernameIgnoreCase("integration-admin").orElseThrow()
+                                .getId().toString();
+                String noPermissionToken = jwtService.createAccessToken(userId, "integration-admin", List.of());
+                mockMvc.perform(get("/permissions").header("Authorization", bearer(noPermissionToken)))
+                                .andExpect(status().isForbidden());
+                mockMvc.perform(post("/permissions")
+                                .header("Authorization", bearer(noPermissionToken))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{}"))
+                                .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void rolePermissionEndpointsReplaceRemoveAndProtectAdmin() throws Exception {
+                String authorization = bearer(loginAccessToken());
+                Role role = saveRole("INVOICE_MANAGER", "Invoice manager", (short) 1);
+                Permission first = savePermission("INVOICE_VIEW", "View invoices", (short) 1);
+                Permission second = savePermission("INVOICE_CREATE", "Create invoices", (short) 1);
+                Permission inactive = savePermission("INVOICE_EXPORT", "Export invoices", (short) 0);
+
+                mockMvc.perform(get("/roles/{id}/permissions", role.getId()).header("Authorization", authorization))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$").isEmpty());
+                mockMvc.perform(put("/roles/{id}/permissions", role.getId())
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(new com.frontendbase.api.role.dto.RolePermissionsPayload(
+                                                List.of(first.getId(), second.getId())))))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$").isArray())
+                                .andExpect(jsonPath("$.length()").value(2))
+                                .andExpect(jsonPath("$[0].code").value("INVOICE_CREATE"));
+
+                mockMvc.perform(put("/roles/{id}/permissions", role.getId())
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(new com.frontendbase.api.role.dto.RolePermissionsPayload(
+                                                List.of(first.getId(), first.getId())))))
+                                .andExpect(status().isBadRequest())
+                                .andExpect(jsonPath("$.code").value("DUPLICATE_PERMISSION_ID"));
+                mockMvc.perform(put("/roles/{id}/permissions", role.getId())
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(new com.frontendbase.api.role.dto.RolePermissionsPayload(
+                                                List.of(UUID.randomUUID())))))
+                                .andExpect(status().isNotFound())
+                                .andExpect(jsonPath("$.code").value("PERMISSION_NOT_FOUND"));
+                mockMvc.perform(put("/roles/{id}/permissions", role.getId())
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(new com.frontendbase.api.role.dto.RolePermissionsPayload(
+                                                List.of(inactive.getId())))))
+                                .andExpect(status().isConflict())
+                                .andExpect(jsonPath("$.code").value("PERMISSION_INACTIVE"));
+                mockMvc.perform(get("/roles/{id}/permissions", role.getId()).header("Authorization", authorization))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.length()").value(2));
+
+                mockMvc.perform(put("/roles/{id}/permissions", role.getId())
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"permissionIds\":[]}"))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$").isEmpty());
+                mockMvc.perform(put("/roles/{id}/permissions", role.getId())
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(new com.frontendbase.api.role.dto.RolePermissionsPayload(
+                                                List.of(first.getId())))))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.length()").value(1));
+                mockMvc.perform(delete("/roles/{roleId}/permissions/{permissionId}", role.getId(), first.getId())
+                                .header("Authorization", authorization))
+                                .andExpect(status().isNoContent());
+                mockMvc.perform(delete("/roles/{roleId}/permissions/{permissionId}", role.getId(), first.getId())
+                                .header("Authorization", authorization))
+                                .andExpect(status().isNotFound())
+                                .andExpect(jsonPath("$.code").value("ROLE_PERMISSION_NOT_FOUND"));
+                mockMvc.perform(get("/roles/{id}/permissions", UUID.randomUUID())
+                                .header("Authorization", authorization))
+                                .andExpect(status().isNotFound())
+                                .andExpect(jsonPath("$.code").value("ROLE_NOT_FOUND"));
+
+                Role adminRole = saveRole("ADMIN", "Administrator", (short) 1);
+                Permission adminPermission = savePermission("ADMIN_TEST_VIEW", "Admin test permission", (short) 1);
+                adminRole.getPermissions().add(adminPermission);
+                roleRepository.save(adminRole);
+                mockMvc.perform(put("/roles/{id}/permissions", adminRole.getId())
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"permissionIds\":[]}"))
+                                .andExpect(status().isConflict())
+                                .andExpect(jsonPath("$.code").value("SYSTEM_ROLE_PROTECTED"));
+                mockMvc.perform(delete("/roles/{roleId}/permissions/{permissionId}",
+                                adminRole.getId(), adminPermission.getId()).header("Authorization", authorization))
+                                .andExpect(status().isConflict())
+                                .andExpect(jsonPath("$.code").value("SYSTEM_ROLE_PROTECTED"));
+                mockMvc.perform(get("/roles/{id}/permissions", adminRole.getId())
+                                .header("Authorization", authorization))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.length()").value(1));
+
+                String userId = userRepository.findByUsernameIgnoreCase("integration-admin").orElseThrow()
+                                .getId().toString();
+                String noPermissionToken = jwtService.createAccessToken(userId, "integration-admin", List.of());
+                mockMvc.perform(get("/roles/{id}/permissions", role.getId())
+                                .header("Authorization", bearer(noPermissionToken)))
+                                .andExpect(status().isForbidden());
+                mockMvc.perform(put("/roles/{id}/permissions", role.getId())
+                                .header("Authorization", bearer(noPermissionToken))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"permissionIds\":[]}"))
+                                .andExpect(status().isForbidden());
+        }
+
+        private Permission savePermission(String code, String name, short permissionStatus) {
+                Permission permission = new Permission();
+                permission.setId(UUID.randomUUID());
+                permission.setName(name);
+                permission.setCode(code);
+                permission.setDescription(name);
+                permission.setStatus(permissionStatus);
+                return permissionRepository.save(permission);
         }
 
         private Role saveRole(String code, String name, short roleStatus) {
