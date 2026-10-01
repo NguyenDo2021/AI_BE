@@ -22,9 +22,9 @@ public interface RoleRepository extends JpaRepository<Role, UUID> {
 
     @Query("""
             select role from Role role
-            where (:keyword is null or lower(role.name) like lower(concat(concat('%', :keyword), '%')))
-                and (:name is null or lower(role.name) like lower(concat(concat('%', :name), '%')))
-                and (:code is null or lower(role.code) like lower(concat(concat('%', :code), '%')))
+            where (:keyword is null or lower(role.name) like lower(concat(concat('%', cast(:keyword as string)), '%')))
+                and (:name is null or lower(role.name) like lower(concat(concat('%', cast(:name as string)), '%')))
+                and (:code is null or lower(role.code) like lower(concat(concat('%', cast(:code as string)), '%')))
                 and (:status is null or role.status = :status)
             """)
     Page<Role> search(
