@@ -10,11 +10,14 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 public interface UserRepository extends JpaRepository<UserAccount, UUID>, JpaSpecificationExecutor<UserAccount> {
     Optional<UserAccount> findByUsernameIgnoreCase(String username);
 
-    @EntityGraph(attributePaths = {"roles", "roles.permissions"})
+    @EntityGraph(attributePaths = { "roles", "roles.permissions" })
     Optional<UserAccount> findWithRolesAndPermissionsByUsernameIgnoreCase(String username);
 
-    @EntityGraph(attributePaths = {"roles", "roles.permissions"})
+    @EntityGraph(attributePaths = { "roles", "roles.permissions" })
     Optional<UserAccount> findWithRolesAndPermissionsById(UUID id);
+
+    @EntityGraph(attributePaths = { "roles" })
+    Optional<UserAccount> findWithRolesById(UUID id);
 
     boolean existsByUsernameIgnoreCase(String username);
 

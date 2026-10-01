@@ -1,15 +1,22 @@
 package com.frontendbase.api.user.service;
 
 import com.frontendbase.api.common.exception.ApiException;
+import com.frontendbase.api.role.dto.RoleResponse;
+import com.frontendbase.api.role.entity.Role;
+import com.frontendbase.api.role.repository.RoleRepository;
 import com.frontendbase.api.user.dto.UserPageResponse;
 import com.frontendbase.api.user.dto.UserPayload;
 import com.frontendbase.api.user.dto.UserResponse;
+import com.frontendbase.api.user.dto.UserRolesPayload;
 import com.frontendbase.api.user.entity.UserAccount;
 import com.frontendbase.api.user.mapper.UserMapper;
 import com.frontendbase.api.user.repository.UserRepository;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -28,14 +35,17 @@ public class UserService {
     private static final int MAX_PAGE_SIZE = 100;
 
     private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
 
     public UserService(
             UserRepository userRepository,
+            RoleRepository roleRepository,
             UserMapper userMapper,
             PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.roleRepository = roleRepository;
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
     }
@@ -66,6 +76,62 @@ public class UserService {
         return toResponse(findUser(id));
     }
 
+    @Transactional(readOnly = true)
+    public List<RoleResponse> getUserRoles(UUID id) {
+        return toRoleResponses(findUserWithRoles(id).getRoles());
+    }
+
+    @Transactional
+    public List<RoleResponse> updateUserRoles(UUID id, UserRolesPayload payload) {
+        UserAccount user = findUserWithRoles(id);
+        List<UUID> requestedRoleIds = payload.roleIds();
+        Set<UUID> requestedRoleIdSet = new HashSet<>(requestedRoleIds);
+        if (requestedRoleIdSet.size() != requestedRoleIds.size()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "DUPLICATE_ROLE_ID", "Danh sách role có ID bị trùng");
+        }
+
+        List<Role> requestedRoles = roleRepository.findAllById(requestedRoleIds);
+        Set<UUID> foundRoleIds = requestedRoles.stream().map(Role::getId).collect(Collectors.toSet());
+        requestedRoleIds.stream()
+                .filter(roleId -> !foundRoleIds.contains(roleId))
+                .findFirst()
+                .ifPresent(roleId -> {
+                    throw new ApiException(HttpStatus.NOT_FOUND, "ROLE_NOT_FOUND", "Không tìm thấy vai trò");
+                });
+
+        Set<UUID> currentRoleIds = user.getRoles().stream().map(Role::getId).collect(Collectors.toSet());
+        requestedRoles.stream()
+                .filter(role -> role.getStatus() != 1 && !currentRoleIds.contains(role.getId()))
+                .findFirst()
+                .ifPresent(role -> {
+                    throw new ApiException(HttpStatus.CONFLICT, "ROLE_INACTIVE",
+                            "Không thể gán vai trò đã bị vô hiệu hóa");
+                });
+        ensureAdminRoleRetained(user, requestedRoleIdSet);
+
+        user.setRoles(new HashSet<>(requestedRoles));
+        auditRoleUpdate(user);
+        return toRoleResponses(user.getRoles());
+    }
+
+    @Transactional
+    public void removeUserRole(UUID id, UUID roleId) {
+        UserAccount user = findUserWithRoles(id);
+        Role role = roleRepository.findById(roleId).orElseThrow(
+                () -> new ApiException(HttpStatus.NOT_FOUND, "ROLE_NOT_FOUND", "Không tìm thấy vai trò"));
+        boolean assigned = user.getRoles().stream().anyMatch(assignedRole -> assignedRole.getId().equals(roleId));
+        if (!assigned) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "USER_ROLE_NOT_FOUND",
+                    "Người dùng chưa được gán vai trò này");
+        }
+        if ("ADMIN".equalsIgnoreCase(role.getCode())) {
+            throw new ApiException(HttpStatus.CONFLICT, "SYSTEM_ROLE_ASSIGNMENT_PROTECTED",
+                    "Không thể gỡ vai trò ADMIN khỏi người dùng");
+        }
+        user.getRoles().removeIf(assignedRole -> assignedRole.getId().equals(roleId));
+        auditRoleUpdate(user);
+    }
+
     @Transactional
     public UserResponse createUser(UserPayload payload) {
         ensureUnique(payload, null);
@@ -93,6 +159,34 @@ public class UserService {
     private UserAccount findUser(UUID id) {
         return userRepository.findById(id).orElseThrow(
                 () -> new ApiException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "Không tìm thấy người dùng"));
+    }
+
+    private UserAccount findUserWithRoles(UUID id) {
+        return userRepository.findWithRolesById(id).orElseThrow(
+                () -> new ApiException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "Không tìm thấy người dùng"));
+    }
+
+    private void ensureAdminRoleRetained(UserAccount user, Set<UUID> requestedRoleIds) {
+        boolean removesAdmin = user.getRoles().stream()
+                .anyMatch(role -> "ADMIN".equalsIgnoreCase(role.getCode())
+                        && !requestedRoleIds.contains(role.getId()));
+        if (removesAdmin) {
+            throw new ApiException(HttpStatus.CONFLICT, "SYSTEM_ROLE_ASSIGNMENT_PROTECTED",
+                    "Không thể gỡ vai trò ADMIN khỏi người dùng");
+        }
+    }
+
+    private void auditRoleUpdate(UserAccount user) {
+        user.setUpdatedBy(currentUserId());
+        user.setUpdatedAt(Instant.now());
+    }
+
+    private List<RoleResponse> toRoleResponses(Set<Role> roles) {
+        return roles.stream()
+                .sorted(Comparator.comparing(Role::getName, String.CASE_INSENSITIVE_ORDER))
+                .map(role -> new RoleResponse(role.getId(), role.getName(), role.getCode(), role.getDescription(),
+                        role.getStatus(), role.getCreatedAt(), role.getUpdatedAt()))
+                .toList();
     }
 
     private UUID currentUserId() {
