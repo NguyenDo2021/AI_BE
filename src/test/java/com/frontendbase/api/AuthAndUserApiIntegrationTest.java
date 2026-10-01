@@ -595,8 +595,9 @@ class AuthAndUserApiIntegrationTest {
                 mockMvc.perform(put("/roles/{id}/permissions", role.getId())
                                 .header("Authorization", authorization)
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content(objectMapper.writeValueAsString(new com.frontendbase.api.role.dto.RolePermissionsPayload(
-                                                List.of(first.getId(), second.getId())))))
+                                .content(objectMapper.writeValueAsString(
+                                                new com.frontendbase.api.role.dto.RolePermissionsPayload(
+                                                                List.of(first.getId(), second.getId())))))
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$").isArray())
                                 .andExpect(jsonPath("$.length()").value(2))
@@ -605,22 +606,25 @@ class AuthAndUserApiIntegrationTest {
                 mockMvc.perform(put("/roles/{id}/permissions", role.getId())
                                 .header("Authorization", authorization)
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content(objectMapper.writeValueAsString(new com.frontendbase.api.role.dto.RolePermissionsPayload(
-                                                List.of(first.getId(), first.getId())))))
+                                .content(objectMapper.writeValueAsString(
+                                                new com.frontendbase.api.role.dto.RolePermissionsPayload(
+                                                                List.of(first.getId(), first.getId())))))
                                 .andExpect(status().isBadRequest())
                                 .andExpect(jsonPath("$.code").value("DUPLICATE_PERMISSION_ID"));
                 mockMvc.perform(put("/roles/{id}/permissions", role.getId())
                                 .header("Authorization", authorization)
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content(objectMapper.writeValueAsString(new com.frontendbase.api.role.dto.RolePermissionsPayload(
-                                                List.of(UUID.randomUUID())))))
+                                .content(objectMapper.writeValueAsString(
+                                                new com.frontendbase.api.role.dto.RolePermissionsPayload(
+                                                                List.of(UUID.randomUUID())))))
                                 .andExpect(status().isNotFound())
                                 .andExpect(jsonPath("$.code").value("PERMISSION_NOT_FOUND"));
                 mockMvc.perform(put("/roles/{id}/permissions", role.getId())
                                 .header("Authorization", authorization)
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content(objectMapper.writeValueAsString(new com.frontendbase.api.role.dto.RolePermissionsPayload(
-                                                List.of(inactive.getId())))))
+                                .content(objectMapper.writeValueAsString(
+                                                new com.frontendbase.api.role.dto.RolePermissionsPayload(
+                                                                List.of(inactive.getId())))))
                                 .andExpect(status().isConflict())
                                 .andExpect(jsonPath("$.code").value("PERMISSION_INACTIVE"));
                 mockMvc.perform(get("/roles/{id}/permissions", role.getId()).header("Authorization", authorization))
@@ -636,8 +640,9 @@ class AuthAndUserApiIntegrationTest {
                 mockMvc.perform(put("/roles/{id}/permissions", role.getId())
                                 .header("Authorization", authorization)
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content(objectMapper.writeValueAsString(new com.frontendbase.api.role.dto.RolePermissionsPayload(
-                                                List.of(first.getId())))))
+                                .content(objectMapper.writeValueAsString(
+                                                new com.frontendbase.api.role.dto.RolePermissionsPayload(
+                                                                List.of(first.getId())))))
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.length()").value(1));
                 mockMvc.perform(delete("/roles/{roleId}/permissions/{permissionId}", role.getId(), first.getId())

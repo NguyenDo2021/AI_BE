@@ -30,8 +30,7 @@ public final class PermissionCodes {
             PERMISSION_VIEW,
             PERMISSION_CREATE,
             PERMISSION_UPDATE,
-            PERMISSION_DELETE
-    );
+            PERMISSION_DELETE);
 
     private PermissionCodes() {
     }
