@@ -18,6 +18,7 @@ import com.frontendbase.api.security.entity.Permission;
 import com.frontendbase.api.security.repository.PermissionRepository;
 import com.frontendbase.api.security.service.JwtService;
 import com.frontendbase.api.user.entity.UserAccount;
+import com.frontendbase.api.user.dto.UserRolesPayload;
 import com.frontendbase.api.user.repository.UserRepository;
 import java.util.UUID;
 import java.util.List;
@@ -373,6 +374,127 @@ class AuthAndUserApiIntegrationTest {
                                 .andExpect(status().isForbidden());
                 mockMvc.perform(delete("/roles/{id}", createdId).header("Authorization", noPermission))
                                 .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void userRoleEndpointsReadReplaceRemoveAndEnforceRules() throws Exception {
+                String authorization = bearer(loginAccessToken());
+                UserAccount user = new UserAccount();
+                user.setId(UUID.randomUUID());
+                user.setUsername("role-target");
+                user.setFullName("Role Target");
+                user.setEmail("role-target@example.test");
+                user.setStatus((short) 1);
+                user = userRepository.save(user);
+                String userId = user.getId().toString();
+
+                mockMvc.perform(get("/users/{id}/roles", userId).header("Authorization", authorization))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$").isArray())
+                                .andExpect(jsonPath("$").isEmpty());
+
+                Role firstRole = saveRole("ROLE_FIRST", "First role", (short) 1);
+                Role secondRole = saveRole("ROLE_SECOND", "Second role", (short) 1);
+                Role inactiveRole = saveRole("ROLE_DISABLED", "Disabled role", (short) 0);
+                mockMvc.perform(put("/users/{id}/roles", userId)
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(new UserRolesPayload(
+                                                List.of(firstRole.getId(), secondRole.getId())))))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$").isArray())
+                                .andExpect(jsonPath("$.length()").value(2))
+                                .andExpect(jsonPath("$[0].id").value(firstRole.getId().toString()));
+                org.junit.jupiter.api.Assertions.assertEquals(2,
+                                userRepository.findWithRolesById(user.getId()).orElseThrow().getRoles().size());
+
+                mockMvc.perform(put("/users/{id}/roles", userId)
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(new UserRolesPayload(
+                                                List.of(firstRole.getId(), firstRole.getId())))))
+                                .andExpect(status().isBadRequest())
+                                .andExpect(jsonPath("$.code").value("DUPLICATE_ROLE_ID"));
+
+                mockMvc.perform(put("/users/{id}/roles", userId)
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(new UserRolesPayload(
+                                                List.of(inactiveRole.getId())))))
+                                .andExpect(status().isConflict())
+                                .andExpect(jsonPath("$.code").value("ROLE_INACTIVE"));
+
+                mockMvc.perform(put("/users/{id}/roles", userId)
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(new UserRolesPayload(
+                                                List.of(UUID.randomUUID())))))
+                                .andExpect(status().isNotFound())
+                                .andExpect(jsonPath("$.code").value("ROLE_NOT_FOUND"));
+                org.junit.jupiter.api.Assertions.assertEquals(2,
+                                userRepository.findWithRolesById(user.getId()).orElseThrow().getRoles().size());
+
+                mockMvc.perform(put("/users/{id}/roles", userId)
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(new UserRolesPayload(
+                                                List.of(secondRole.getId())))))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.length()").value(1))
+                                .andExpect(jsonPath("$[0].code").value("ROLE_SECOND"));
+                mockMvc.perform(delete("/users/{id}/roles/{roleId}", userId, secondRole.getId())
+                                .header("Authorization", authorization))
+                                .andExpect(status().isNoContent());
+                mockMvc.perform(get("/users/{id}/roles", userId).header("Authorization", authorization))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$").isEmpty());
+
+                Role adminRole = saveRole("ADMIN", "Administrator", (short) 1);
+                UserAccount persistedUser = userRepository.findById(user.getId()).orElseThrow();
+                persistedUser.getRoles().add(adminRole);
+                userRepository.save(persistedUser);
+                mockMvc.perform(delete("/users/{id}/roles/{roleId}", userId, adminRole.getId())
+                                .header("Authorization", authorization))
+                                .andExpect(status().isConflict())
+                                .andExpect(jsonPath("$.code").value("SYSTEM_ROLE_ASSIGNMENT_PROTECTED"));
+                mockMvc.perform(put("/users/{id}/roles", userId)
+                                .header("Authorization", authorization)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(new UserRolesPayload(
+                                                List.of()))))
+                                .andExpect(status().isConflict())
+                                .andExpect(jsonPath("$.code").value("SYSTEM_ROLE_ASSIGNMENT_PROTECTED"));
+                assertTrue(userRepository.findWithRolesById(user.getId()).orElseThrow().getRoles().stream()
+                                .anyMatch(role -> "ADMIN".equals(role.getCode())));
+
+                mockMvc.perform(get("/users/{id}/roles", UUID.randomUUID())
+                                .header("Authorization", authorization))
+                                .andExpect(status().isNotFound())
+                                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+
+                String noPermissionToken = jwtService.createAccessToken(
+                                userRepository.findByUsernameIgnoreCase("integration-admin").orElseThrow()
+                                                .getId().toString(),
+                                "integration-admin",
+                                List.of());
+                mockMvc.perform(get("/users/{id}/roles", userId)
+                                .header("Authorization", bearer(noPermissionToken)))
+                                .andExpect(status().isForbidden())
+                                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+                mockMvc.perform(put("/users/{id}/roles", userId)
+                                .header("Authorization", bearer(noPermissionToken))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"roleIds\":[]}"))
+                                .andExpect(status().isForbidden());
+        }
+
+        private Role saveRole(String code, String name, short roleStatus) {
+                Role role = new Role();
+                role.setId(UUID.randomUUID());
+                role.setCode(code);
+                role.setName(name);
+                role.setStatus(roleStatus);
+                return roleRepository.save(role);
         }
 
         private String login() throws Exception {

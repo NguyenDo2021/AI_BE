@@ -1,12 +1,15 @@
 package com.frontendbase.api.user.controller;
 
+import com.frontendbase.api.role.dto.RoleResponse;
 import com.frontendbase.api.user.dto.UserPageResponse;
 import com.frontendbase.api.user.dto.UserPayload;
 import com.frontendbase.api.user.dto.UserResponse;
+import com.frontendbase.api.user.dto.UserRolesPayload;
 import com.frontendbase.api.user.service.UserService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import java.util.List;
 import java.util.UUID;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.http.HttpStatus;
@@ -40,8 +43,7 @@ public class UserController {
             @RequestParam(defaultValue = "1") @Min(1) int page,
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) int pageSize,
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) @Min(0) @Max(1) Integer status
-    ) {
+            @RequestParam(required = false) @Min(0) @Max(1) Integer status) {
         return userService.findUsers(page, pageSize, keyword, status);
     }
 
@@ -49,6 +51,27 @@ public class UserController {
     @PreAuthorize("hasAuthority('USER_VIEW')")
     public UserResponse getUser(@PathVariable UUID id) {
         return userService.getUser(id);
+    }
+
+    @GetMapping("/{id}/roles")
+    @PreAuthorize("hasAuthority('USER_VIEW')")
+    public List<RoleResponse> getUserRoles(@PathVariable UUID id) {
+        return userService.getUserRoles(id);
+    }
+
+    @PutMapping("/{id}/roles")
+    @PreAuthorize("hasAuthority('USER_UPDATE')")
+    public List<RoleResponse> updateUserRoles(
+            @PathVariable UUID id,
+            @Valid @RequestBody UserRolesPayload payload) {
+        return userService.updateUserRoles(id, payload);
+    }
+
+    @DeleteMapping("/{id}/roles/{roleId}")
+    @PreAuthorize("hasAuthority('USER_UPDATE')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removeUserRole(@PathVariable UUID id, @PathVariable UUID roleId) {
+        userService.removeUserRole(id, roleId);
     }
 
     @PostMapping
