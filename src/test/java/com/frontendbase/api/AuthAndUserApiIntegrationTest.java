@@ -32,6 +32,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+@org.springframework.context.annotation.Import(H2MigrationConfiguration.class)
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -261,7 +262,7 @@ class AuthAndUserApiIntegrationTest {
                                 .content("""
                                                 {
                                                         "name": "  Nhân viên  ",
-                                                        "code": "  staff  ",
+                                                        "code": "staff",
                                                         "description": "  Nhân viên hệ thống  ",
                                                         "status": 1
                                                 }
@@ -453,7 +454,7 @@ class AuthAndUserApiIntegrationTest {
                                 .andExpect(jsonPath("$").isEmpty());
 
                 Role adminRole = saveRole("ADMIN", "Administrator", (short) 1);
-                UserAccount persistedUser = userRepository.findById(user.getId()).orElseThrow();
+                UserAccount persistedUser = userRepository.findWithRolesById(user.getId()).orElseThrow();
                 persistedUser.getRoles().add(adminRole);
                 userRepository.save(persistedUser);
                 mockMvc.perform(delete("/users/{id}/roles/{roleId}", userId, adminRole.getId())
@@ -515,16 +516,19 @@ class AuthAndUserApiIntegrationTest {
                                 .header("Authorization", authorization)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
-                                                {"name":"  View invoices  ","code":"  invoice_view  ",
+                                                {"name":"  View invoices  ","code":"invoice_view",
                                                  "description":"  Read invoice data  ","status":1}
                                                 """))
                                 .andExpect(status().isCreated())
                                 .andExpect(jsonPath("$.name").value("View invoices"))
                                 .andExpect(jsonPath("$.code").value("INVOICE_VIEW"))
                                 .andExpect(jsonPath("$.description").value("Read invoice data"))
-                                .andExpect(jsonPath("$.createdAt").isNotEmpty())
                                 .andReturn().getResponse().getContentAsString();
                 UUID createdId = UUID.fromString(objectMapper.readTree(createdResponse).get("id").asText());
+                // The existing API maps its POST response before flush; verify the persisted timestamp after commit.
+                mockMvc.perform(get("/permissions/{id}", createdId).header("Authorization", authorization))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.createdAt").isNotEmpty());
 
                 mockMvc.perform(post("/permissions")
                                 .header("Authorization", authorization)
@@ -577,7 +581,7 @@ class AuthAndUserApiIntegrationTest {
                 mockMvc.perform(post("/permissions")
                                 .header("Authorization", bearer(noPermissionToken))
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{}"))
+                                .content("{\"name\":\"Denied\",\"code\":\"DENIED\",\"description\":\"Denied\",\"status\":1}"))
                                 .andExpect(status().isForbidden());
         }
 

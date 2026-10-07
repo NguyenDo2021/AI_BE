@@ -8,6 +8,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 public interface UserRepository extends JpaRepository<UserAccount, UUID>, JpaSpecificationExecutor<UserAccount> {
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select u from UserAccount u where u.id = :id")
+    Optional<UserAccount> lockById(@org.springframework.data.repository.query.Param("id") UUID id);
+
     Optional<UserAccount> findByUsernameIgnoreCase(String username);
 
     @EntityGraph(attributePaths = { "roles", "roles.permissions" })

@@ -168,3 +168,8 @@ The automated suite uses H2 in PostgreSQL compatibility mode and runs the Flyway
 7. Sign out in the header (frontend-only local token removal); the next protected route returns to `/login`.
 
 The browser E2E pass exposed an existing FE form issue: the user modal's save handler read the outer v-model object, which remained empty while the BasicForm displayed entered values. `src/components/BasicForm/BasicForm.vue` now exposes its validated internal form values, and the user page submits those values. No API field, route, method, response or auth contract changed. End-to-end browser testing against real PostgreSQL still requires Docker/PostgreSQL; the FE/browser smoke flow was exercised against the same Flyway migration using in-memory H2.
+
+
+## Quản lý kho và danh mục vật tư
+
+API kho, nhóm sản phẩm, sản phẩm và gán kho cho user: xem [tài liệu API](docs/inventory-api.md). Migration V5 chạy tự động khi khởi động; đăng nhập và hệ thống role/permission hiện có được dùng lại.
