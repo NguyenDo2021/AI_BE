@@ -29,6 +29,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @org.springframework.context.annotation.Import(H2MigrationConfiguration.class)
 @SpringBootTest @AutoConfigureMockMvc @ActiveProfiles("test")
 class InventoryApiIntegrationTest {
+    @Autowired org.springframework.jdbc.core.JdbcTemplate stockJdbc;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @Autowired UserRepository users;
@@ -45,6 +46,7 @@ class InventoryApiIntegrationTest {
     final String password = "Inventory-test-123!";
 
     @BeforeEach void setup() throws Exception {
+        StockTestCleanup.clear(stockJdbc);
         assignments.deleteAll(); products.deleteAll(); groups.deleteAll(); warehouses.deleteAll();
         refreshTokens.deleteAll(); users.deleteAll(); roles.deleteAll(); permissions.deleteAll();
         // Admin deliberately has no permissions: new APIs must recognize the live ADMIN role.

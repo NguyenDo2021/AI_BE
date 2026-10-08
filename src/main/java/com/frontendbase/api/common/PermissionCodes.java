@@ -29,6 +29,14 @@ public final class PermissionCodes {
     public static final String USER_WAREHOUSE_VIEW = "USER_WAREHOUSE_VIEW";
     public static final String USER_WAREHOUSE_ASSIGN = "USER_WAREHOUSE_ASSIGN";
 
+    public static final String STOCK_RECEIPT_VIEW = "STOCK_RECEIPT_VIEW";
+    public static final String STOCK_RECEIPT_CREATE = "STOCK_RECEIPT_CREATE";
+    public static final String STOCK_RECEIPT_UPDATE = "STOCK_RECEIPT_UPDATE";
+    public static final String STOCK_RECEIPT_CONFIRM = "STOCK_RECEIPT_CONFIRM";
+    public static final String STOCK_RECEIPT_CANCEL = "STOCK_RECEIPT_CANCEL";
+    public static final String INVENTORY_VIEW = "INVENTORY_VIEW";
+    public static final String INVENTORY_MOVEMENT_VIEW = "INVENTORY_MOVEMENT_VIEW";
+
     public static final Set<String> ALL = Set.of(
             DASHBOARD_VIEW,
             USER_VIEW,
@@ -53,7 +61,14 @@ public final class PermissionCodes {
             PRODUCT_CREATE,
             PRODUCT_UPDATE,
             USER_WAREHOUSE_VIEW,
-            USER_WAREHOUSE_ASSIGN);
+            USER_WAREHOUSE_ASSIGN,
+            STOCK_RECEIPT_VIEW,
+            STOCK_RECEIPT_CREATE,
+            STOCK_RECEIPT_UPDATE,
+            STOCK_RECEIPT_CONFIRM,
+            STOCK_RECEIPT_CANCEL,
+            INVENTORY_VIEW,
+            INVENTORY_MOVEMENT_VIEW);
 
     private PermissionCodes() {
     }

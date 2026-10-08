@@ -37,6 +37,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class AuthAndUserApiIntegrationTest {
+    @Autowired org.springframework.jdbc.core.JdbcTemplate stockJdbc;
         private static final String ADMIN_PASSWORD = "Integration-test-password-123!";
 
         @Autowired
@@ -65,6 +66,7 @@ class AuthAndUserApiIntegrationTest {
 
         @BeforeEach
         void setUp() {
+        StockTestCleanup.clear(stockJdbc);
                 refreshTokenRepository.deleteAll();
                 userRepository.deleteAll();
                 roleRepository.deleteAll();

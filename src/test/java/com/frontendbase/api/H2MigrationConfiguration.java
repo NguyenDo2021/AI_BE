@@ -42,7 +42,9 @@ public class H2MigrationConfiguration {
                         matcher.appendReplacement(compatible, java.util.regex.Matcher.quoteReplacement(replacement));
                     }
                     matcher.appendTail(compatible);
-                    String sql = compatible.toString();
+                    // PostgreSQL PL/pgSQL audit triggers are verified against PostgreSQL integration tests.
+                    String sql = filename.equals("V7__protect_stock_audit_history.sql")
+                            ? "SELECT 1;" : compatible.toString();
                     resources.add(new LoadableResource() {
                         public Reader read() { return new StringReader(sql); }
                         public String getAbsolutePath() { return "db/migration/" + filename; }
