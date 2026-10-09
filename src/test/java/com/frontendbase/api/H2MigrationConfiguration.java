@@ -11,15 +11,20 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 
-/** Test-only SQL adapter; production migration files/checksums remain untouched. */
+/**
+ * Test-only SQL adapter; production migration files/checksums remain untouched.
+ */
 @TestConfiguration
 public class H2MigrationConfiguration {
     @Bean
     FlywayConfigurationCustomizer h2MigrationCompatibility() {
         return configuration -> {
             try (var connection = configuration.getDataSource().getConnection()) {
-                if (!connection.getMetaData().getURL().startsWith("jdbc:h2:")) return;
-            } catch (java.sql.SQLException exception) { throw new IllegalStateException(exception); }
+                if (!connection.getMetaData().getURL().startsWith("jdbc:h2:"))
+                    return;
+            } catch (java.sql.SQLException exception) {
+                throw new IllegalStateException(exception);
+            }
             List<LoadableResource> resources = new ArrayList<>();
             try {
                 for (var resource : new PathMatchingResourcePatternResolver()
@@ -28,6 +33,13 @@ public class H2MigrationConfiguration {
                     String original;
                     try (var input = resource.getInputStream()) {
                         original = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+                    }
+                    if (filename.equals("V6__add_stock_receipts_and_inventory.sql")) {
+                        original = original
+                                .replace("type VARCHAR(30) NOT NULL CHECK",
+                                        "type VARCHAR(30) NOT NULL CONSTRAINT inventory_movements_type_check CHECK")
+                                .replace("CHECK ((type = 'RECEIPT_CONFIRM'",
+                                        "CONSTRAINT inventory_movements_check CHECK ((type = 'RECEIPT_CONFIRM'");
                     }
                     // H2 does not accept PostgreSQL's comma-separated ADD COLUMN statements.
                     var pattern = Pattern.compile("ALTER TABLE (\\w+)\\s+(ADD COLUMN .*?);", Pattern.DOTALL);
@@ -42,22 +54,42 @@ public class H2MigrationConfiguration {
                         matcher.appendReplacement(compatible, java.util.regex.Matcher.quoteReplacement(replacement));
                     }
                     matcher.appendTail(compatible);
-                    // PostgreSQL PL/pgSQL audit triggers are verified against PostgreSQL integration tests.
-                    String sql = filename.equals("V7__protect_stock_audit_history.sql")
-                            ? "SELECT 1;" : compatible.toString();
+                    // PostgreSQL PL/pgSQL audit triggers are verified against PostgreSQL
+                    // integration tests.
+                    String sql = (filename.equals("V7__protect_stock_audit_history.sql")
+                            || filename.equals("V9__protect_sales_audit_history.sql"))
+                                    ? "SELECT 1;"
+                                    : compatible.toString();
                     resources.add(new LoadableResource() {
-                        public Reader read() { return new StringReader(sql); }
-                        public String getAbsolutePath() { return "db/migration/" + filename; }
-                        public String getAbsolutePathOnDisk() { return getAbsolutePath(); }
-                        public String getFilename() { return filename; }
-                        public String getRelativePath() { return filename; }
+                        public Reader read() {
+                            return new StringReader(sql);
+                        }
+
+                        public String getAbsolutePath() {
+                            return "db/migration/" + filename;
+                        }
+
+                        public String getAbsolutePathOnDisk() {
+                            return getAbsolutePath();
+                        }
+
+                        public String getFilename() {
+                            return filename;
+                        }
+
+                        public String getRelativePath() {
+                            return filename;
+                        }
                     });
                 }
-            } catch (IOException exception) { throw new UncheckedIOException(exception); }
+            } catch (IOException exception) {
+                throw new UncheckedIOException(exception);
+            }
             configuration.resourceProvider(new ResourceProvider() {
                 public LoadableResource getResource(String name) {
                     return resources.stream().filter(r -> r.getFilename().equals(name)).findFirst().orElse(null);
                 }
+
                 public Collection<LoadableResource> getResources(String prefix, String[] suffixes) {
                     return resources.stream().filter(r -> r.getFilename().startsWith(prefix)
                             && Arrays.stream(suffixes).anyMatch(r.getFilename()::endsWith)).toList();

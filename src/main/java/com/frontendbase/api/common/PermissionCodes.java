@@ -37,6 +37,15 @@ public final class PermissionCodes {
     public static final String INVENTORY_VIEW = "INVENTORY_VIEW";
     public static final String INVENTORY_MOVEMENT_VIEW = "INVENTORY_MOVEMENT_VIEW";
 
+    public static final String CUSTOMER_VIEW = "CUSTOMER_VIEW";
+    public static final String CUSTOMER_CREATE = "CUSTOMER_CREATE";
+    public static final String CUSTOMER_UPDATE = "CUSTOMER_UPDATE";
+    public static final String SALES_ORDER_VIEW = "SALES_ORDER_VIEW";
+    public static final String SALES_ORDER_CREATE = "SALES_ORDER_CREATE";
+    public static final String SALES_ORDER_UPDATE = "SALES_ORDER_UPDATE";
+    public static final String SALES_ORDER_CONFIRM = "SALES_ORDER_CONFIRM";
+    public static final String SALES_ORDER_CANCEL = "SALES_ORDER_CANCEL";
+
     public static final Set<String> ALL = Set.of(
             DASHBOARD_VIEW,
             USER_VIEW,
@@ -68,7 +77,15 @@ public final class PermissionCodes {
             STOCK_RECEIPT_CONFIRM,
             STOCK_RECEIPT_CANCEL,
             INVENTORY_VIEW,
-            INVENTORY_MOVEMENT_VIEW);
+            INVENTORY_MOVEMENT_VIEW,
+            CUSTOMER_VIEW,
+            CUSTOMER_CREATE,
+            CUSTOMER_UPDATE,
+            SALES_ORDER_VIEW,
+            SALES_ORDER_CREATE,
+            SALES_ORDER_UPDATE,
+            SALES_ORDER_CONFIRM,
+            SALES_ORDER_CANCEL);
 
     private PermissionCodes() {
     }

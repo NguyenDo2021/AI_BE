@@ -265,3 +265,12 @@ Yêu cầu JDK 21. H2: `./mvnw.cmd test`. PostgreSQL: dùng **database test riê
 ```
 
 H2 adapter hiện có áp dụng V1–V6 và thay V7 bằng SELECT 1 do không hỗ trợ PL/pgSQL. Test audit trigger chỉ chạy trên PostgreSQL; các test nghiệp vụ/concurrency/rollback chạy trên cả hai. Test thiếu tồn cố ý giảm balance bằng fixture và chỉ kiểm tra không thay đổi thêm sau từ chối; các test bình thường kiểm tra balance bằng tổng movement.
+
+
+## Sales integration
+
+Inventory history now also includes SALE_CONFIRM and SALE_CANCEL. Receipt fields/signs
+remain compatible; sales movements use salesOrderId/salesOrderCode, with receiptId/
+receiptCode omitted. See [the complete sales and movement contract](sales-api.md).
+Receipt cancellation still requires enough current stock; a sale can therefore block
+reversal of its source receipt until goods are returned.

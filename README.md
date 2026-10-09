@@ -173,3 +173,7 @@ The browser E2E pass exposed an existing FE form issue: the user modal's save ha
 ## Quản lý kho và danh mục vật tư
 
 API kho, nhóm sản phẩm, sản phẩm và gán kho cho user: xem [tài liệu API](docs/inventory-api.md). Migration V5 chạy tự động khi khởi động; đăng nhập và hệ thống role/permission hiện có được dùng lại.
+
+
+Customer and sales order API: [complete contract, examples and error codes](docs/sales-api.md).
+Implementation and verification: [sales verification](docs/sales-verification.md).
