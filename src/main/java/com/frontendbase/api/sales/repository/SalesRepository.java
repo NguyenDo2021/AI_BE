@@ -30,12 +30,21 @@ public class SalesRepository {
     }
 
     public SalesResponse order(UUID id, boolean lock) {
+        if (lock)
+            jdbc.query("SELECT id FROM sales_orders WHERE id=? FOR UPDATE", (r, n) -> r.getObject(1, UUID.class), id);
         var rows = jdbc.query(
-                "SELECT * FROM sales_orders WHERE id=?" + (lock ? " FOR UPDATE" : ""), (r, n) -> new SalesResponse(
+                "SELECT s.*,t.paid_amount,t.remaining_amount FROM sales_orders s JOIN sales_payment_totals t ON t.id=s.id WHERE s.id=?",
+                (r, n) -> new SalesResponse(
                         uuid(r, "id"), r.getString("code"), uuid(r, "warehouse_id"), uuid(r, "customer_id"),
                         r.getObject("sale_date", LocalDate.class), r.getString("note"),
                         SalesStatus.valueOf(r.getString("status")), r.getLong("subtotal"), r.getLong("discount_amount"),
-                        r.getLong("total_amount"), r.getLong("version"),
+                        r.getLong("total_amount"), r.getBigDecimal("paid_amount").longValueExact(),
+                        r.getBigDecimal("remaining_amount").longValueExact(),
+                        !"CONFIRMED".equals(r.getString("status")) ? null
+                                : r.getBigDecimal("remaining_amount").signum() == 0 ? PaymentStatus.PAID
+                                        : r.getBigDecimal("paid_amount").signum() == 0 ? PaymentStatus.UNPAID
+                                                : PaymentStatus.PARTIALLY_PAID,
+                        r.getLong("version"),
                         uuid(r, "created_by"), instant(r, "created_at"), instant(r, "updated_at"),
                         uuid(r, "confirmed_by"), instant(r, "confirmed_at"),
                         uuid(r, "cancelled_by"), instant(r, "cancelled_at"), r.getString("cancellation_reason"),
@@ -49,7 +58,8 @@ public class SalesRepository {
             throw new ApiException(HttpStatus.NOT_FOUND, "SALES_ORDER_NOT_FOUND", "Sales order not found");
         var h = rows.getFirst();
         return new SalesResponse(h.id(), h.code(), h.warehouseId(), h.customerId(), h.saleDate(), h.note(), h.status(),
-                h.subtotal(), h.discountAmount(), h.totalAmount(), h.version(),
+                h.subtotal(), h.discountAmount(), h.totalAmount(), h.paidAmount(), h.remainingAmount(),
+                h.paymentStatus(), h.version(),
                 h.createdBy(), h.createdAt(), h.updatedAt(), h.confirmedBy(), h.confirmedAt(), h.cancelledBy(),
                 h.cancelledAt(), h.cancellationReason(), h.goodsReturned(), h.customerSnapshot(), lines(id));
     }

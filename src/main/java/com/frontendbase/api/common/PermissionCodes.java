@@ -46,6 +46,10 @@ public final class PermissionCodes {
     public static final String SALES_ORDER_CONFIRM = "SALES_ORDER_CONFIRM";
     public static final String SALES_ORDER_CANCEL = "SALES_ORDER_CANCEL";
 
+    public static final String PAYMENT_VIEW = "PAYMENT_VIEW";
+    public static final String PAYMENT_CREATE = "PAYMENT_CREATE";
+    public static final String PAYMENT_CANCEL = "PAYMENT_CANCEL";
+    public static final String RECEIVABLE_VIEW = "RECEIVABLE_VIEW";
     public static final Set<String> ALL = Set.of(
             DASHBOARD_VIEW,
             USER_VIEW,
@@ -85,7 +89,7 @@ public final class PermissionCodes {
             SALES_ORDER_CREATE,
             SALES_ORDER_UPDATE,
             SALES_ORDER_CONFIRM,
-            SALES_ORDER_CANCEL);
+            SALES_ORDER_CANCEL, PAYMENT_VIEW, PAYMENT_CREATE, PAYMENT_CANCEL, RECEIVABLE_VIEW);
 
     private PermissionCodes() {
     }

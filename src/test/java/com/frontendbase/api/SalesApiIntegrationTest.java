@@ -752,4 +752,348 @@ class SalesApiIntegrationTest {
                 () -> stockJdbc.update("UPDATE sales_orders SET note='Tampered',version=version+1 WHERE id=?", id));
         consistent();
     }
+
+    // Payment fixtures reuse sales/stock setup and exercise the complete HTTP
+    // contract.
+    void paymentFixture() throws Exception {
+        fixture();
+        confirm(receipt(100));
+        UUID cashier = account("cashier", "CASHIER",
+                List.of("PAYMENT_VIEW", "PAYMENT_CREATE", "PAYMENT_CANCEL", "RECEIVABLE_VIEW"));
+        assign(a, cashier);
+        payer = login("cashier");
+        payerId = cashier;
+    }
+
+    String payer;
+    UUID payerId;
+
+    Map<String, Object> paymentPayload(Object amount) {
+        return new HashMap<>(
+                Map.of("amount", amount, "paymentDate", "2026-10-09", "method", "CASH", "note", "First collection"));
+    }
+
+    MockHttpServletRequestBuilder paymentRequest(JsonNode order, String key, Object amount) throws Exception {
+        return body(post(route(order, "/payments")).header("Idempotency-Key", key), paymentPayload(amount));
+    }
+
+    JsonNode collect(JsonNode order, long amount, String key) throws Exception {
+        return ok(paymentRequest(order, key, amount), payer, 201);
+    }
+
+    JsonNode paymentCancel(JsonNode result) throws Exception {
+        return ok(body(post("/payments/" + result.get("payment").get("id").asText() + "/cancel"),
+                Map.of("reason", "Incorrect recording")), payer, 200);
+    }
+
+    JsonNode pricedOrder(long amount, JsonNode customer) throws Exception {
+        var payload = salePayload(a, 1, amount);
+        if (customer != null)
+            payload.put("customerId", customer.get("id").asText());
+        return saleConfirm(ok(body(post("/sales-orders"), payload), employee, 201));
+    }
+
+    int payerStatus(MockHttpServletRequestBuilder request) throws Exception {
+        return mvc.perform(request.header("Authorization", "Bearer " + payer)).andReturn().getResponse().getStatus();
+    }
+
+    @Test
+    void paymentLifecycleIdempotencyCurrentTotalsAndStockIsolation() throws Exception {
+        paymentFixture();
+        var customer = customer(a);
+        var order = pricedOrder(1000000, customer);
+        assertEquals("UNPAID", order.get("paymentStatus").asText());
+        assertEquals(1000000, order.get("remainingAmount").asLong());
+        long stockBefore = stock(a, p), movementBefore = movements();
+        String key = UUID.randomUUID().toString();
+        var first = collect(order, 600000, key);
+        assertEquals(600000, first.get("order").get("paidAmount").asLong());
+        assertEquals(400000, first.get("order").get("remainingAmount").asLong());
+        assertEquals(payerId.toString(), first.get("payment").get("createdBy").asText());
+        assertEquals(first.get("payment").get("id"), collect(order, 600000, key).get("payment").get("id"));
+        assertEquals("IDEMPOTENCY_CONFLICT", ok(paymentRequest(order, key, 600001), payer, 409).get("code").asText());
+        var changed = paymentPayload(600000);
+        changed.put("note", "Changed");
+        ok(body(post(route(order, "/payments")).header("Idempotency-Key", key), changed), payer, 409);
+        assertEquals("PAYMENT_EXCEEDS_REMAINING",
+                ok(paymentRequest(order, UUID.randomUUID().toString(), 400001), payer, 409).get("code").asText());
+        var second = collect(order, 400000, UUID.randomUUID().toString());
+        assertEquals("PAID", second.get("order").get("paymentStatus").asText());
+        assertEquals(0, second.get("order").get("remainingAmount").asLong());
+        assertEquals("SALES_ORDER_HAS_PAYMENTS", ok(body(post(route(order, "/cancel")),
+                Map.of("version", 1, "reason", "Cancel", "goodsReturned", true)), employee, 409).get("code").asText());
+        var cancelled = paymentCancel(second);
+        assertEquals(400000, cancelled.get("order").get("remainingAmount").asLong());
+        assertEquals(cancelled, paymentCancel(second));
+        paymentCancel(first);
+        var retry = collect(order, 600000, key);
+        assertEquals("CANCELLED", retry.get("payment").get("status").asText());
+        assertEquals(1000000, retry.get("order").get("remainingAmount").asLong());
+        assertEquals(2, ok(get(route(order, "/payments")), payer, 200).get("total").asLong());
+        assertEquals(stockBefore, stock(a, p));
+        assertEquals(movementBefore, movements());
+        saleCancel(order);
+        assertEquals(2, ok(get(route(order, "/payments")), payer, 200).get("total").asLong());
+        var historicalRetry = collect(order, 600000, key);
+        assertEquals(0, historicalRetry.get("order").get("remainingAmount").asLong());
+        assertFalse(historicalRetry.get("order").hasNonNull("paymentStatus"));
+        ok(paymentRequest(order, UUID.randomUUID().toString(), 1), payer, 409);
+    }
+
+    @Test
+    void concurrentPaymentsAndSameKeyDoNotOverCollect() throws Exception {
+        paymentFixture();
+        var order = pricedOrder(1000000, null);
+        var result = concurrent(
+                () -> payerStatus(paymentRequest(order, UUID.randomUUID().toString(), 600000)),
+                () -> payerStatus(paymentRequest(order, UUID.randomUUID().toString(), 600000)));
+        assertTrue(result.equals(List.of(201, 409)) || result.equals(List.of(409, 201)), result.toString());
+        assertEquals(600000, ok(get(route(order, "")), employee, 200).get("paidAmount").asLong());
+        String key = UUID.randomUUID().toString();
+        assertEquals(List.of(201, 201), concurrent(
+                () -> payerStatus(paymentRequest(order, key, 400000)),
+                () -> payerStatus(paymentRequest(order, key, 400000))));
+        assertEquals(2, ok(get(route(order, "/payments")), payer, 200).get("total").asLong());
+        assertEquals(1000000, ok(get(route(order, "")), employee, 200).get("paidAmount").asLong());
+    }
+
+    @Test
+    void concurrentPaymentAndOrderCancellationAreExclusive() throws Exception {
+        paymentFixture();
+        var order = pricedOrder(1000000, null);
+        long stockBefore = stock(a, p);
+        var result = concurrent(
+                () -> payerStatus(paymentRequest(order, UUID.randomUUID().toString(), 600000)),
+                () -> requestStatus(body(post(route(order, "/cancel")),
+                        Map.of("version", 1, "reason", "Cancel", "goodsReturned", true))));
+        assertTrue(result.equals(List.of(201, 409)) || result.equals(List.of(409, 200)), result.toString());
+        var current = ok(get(route(order, "")), employee, 200);
+        if (current.get("status").asText().equals("CANCELLED")) {
+            assertEquals(0, current.get("paidAmount").asLong());
+            assertEquals(stockBefore + 1, stock(a, p));
+        } else {
+            assertEquals(600000, current.get("paidAmount").asLong());
+            assertEquals(stockBefore, stock(a, p));
+        }
+        consistent();
+    }
+
+    @Test
+    void concurrentCancellationReversesPaymentOnceAndKeysAreActorWide() throws Exception {
+        paymentFixture();
+        var one = pricedOrder(100, null);
+        var two = pricedOrder(100, null);
+        String key = UUID.randomUUID().toString();
+        var result = concurrent(
+                () -> payerStatus(paymentRequest(one, key, 60)),
+                () -> payerStatus(paymentRequest(two, key, 60)));
+        assertTrue(result.equals(List.of(201, 409)) || result.equals(List.of(409, 201)), result.toString());
+        var payment = ok(get("/payments"), payer, 200).get("items").get(0);
+        String cancel = "/payments/" + payment.get("id").asText() + "/cancel";
+        assertEquals(List.of(200, 200), concurrent(
+                () -> payerStatus(body(post(cancel), Map.of("reason", "Wrong record"))),
+                () -> payerStatus(body(post(cancel), Map.of("reason", "Wrong record")))));
+        assertEquals(0, ok(get(route(one, "")), employee, 200).get("paidAmount").asLong());
+        assertEquals(0, ok(get(route(two, "")), employee, 200).get("paidAmount").asLong());
+        // A different actor can use the same key.
+        ok(paymentRequest(one, key, 20), admin, 201);
+        assertEquals(2, ok(get("/payments"), payer, 200).get("total").asLong());
+    }
+
+    @Test
+    void paymentValidationZeroDraftCancelledLongLimitsAndRollback() throws Exception {
+        paymentFixture();
+        var draft = sale(1);
+        ok(paymentRequest(draft, UUID.randomUUID().toString(), 1), payer, 409);
+        saleCancel(draft);
+        ok(paymentRequest(draft, UUID.randomUUID().toString(), 1), payer, 409);
+        var free = pricedOrder(0, null);
+        assertEquals("PAID", free.get("paymentStatus").asText());
+        ok(paymentRequest(free, UUID.randomUUID().toString(), 1), payer, 409);
+        var order = pricedOrder(Long.MAX_VALUE, null);
+        for (Object amount : List.of(0, -1, 1.0, 1.5, "1", new java.math.BigInteger("9223372036854775808")))
+            ok(paymentRequest(order, UUID.randomUUID().toString(), amount), payer, 400);
+        for (String key : List.of("bad", "1-1-1-1-1", ""))
+            assertEquals("INVALID_IDEMPOTENCY_KEY", ok(paymentRequest(order, key, 1), payer, 400).get("code").asText());
+        ok(body(post(route(order, "/payments")), paymentPayload(1)), payer, 400);
+        for (String field : List.of("warehouseId", "customerId", "createdBy", "actor")) {
+            var payload = paymentPayload(1);
+            payload.put(field, UUID.randomUUID());
+            ok(body(post(route(order, "/payments")).header("Idempotency-Key", UUID.randomUUID().toString()), payload),
+                    payer, 400);
+        }
+        var payload = paymentPayload(1);
+        payload.put("method", "CARD");
+        ok(body(post(route(order, "/payments")).header("Idempotency-Key", UUID.randomUUID().toString()), payload),
+                payer, 400);
+        payload = paymentPayload(1);
+        payload.put("paymentDate", "bad-date");
+        ok(body(post(route(order, "/payments")).header("Idempotency-Key", UUID.randomUUID().toString()), payload),
+                payer, 400);
+        String key = UUID.randomUUID().toString();
+        stockJdbc.execute("ALTER TABLE payments ADD CONSTRAINT test_payment_failure CHECK(amount<>1)");
+        try {
+            ok(paymentRequest(order, key, 1), payer, 409);
+        } finally {
+            stockJdbc.execute("ALTER TABLE payments DROP CONSTRAINT test_payment_failure");
+        }
+        assertEquals(0, ok(get(route(order, "")), employee, 200).get("paidAmount").asLong());
+        collect(order, 1, key); // rollback did not reserve the key
+        var max = collect(order, Long.MAX_VALUE - 1, UUID.randomUUID().toString());
+        assertEquals(Long.MAX_VALUE, max.get("order").get("paidAmount").asLong());
+        ok(paymentRequest(order, UUID.randomUUID().toString(), 1), payer, 409);
+        var id = max.get("payment").get("id").asText();
+        for (var reason : List.of("", "   "))
+            ok(body(post("/payments/" + id + "/cancel"), Map.of("reason", reason)), payer, 400);
+        paymentCancel(max);
+        assertEquals(Long.MAX_VALUE - 1, ok(get(route(order, "")), employee, 200).get("remainingAmount").asLong());
+    }
+
+    @Test
+    void receivablesScopeFullCustomerTotalPaginationWalkInAndNumericOverflow() throws Exception {
+        paymentFixture();
+        var customer = customer(a);
+        var first = pricedOrder(1000000, customer);
+        pricedOrder(2000000, customer);
+        var walkIn = pricedOrder(700000, null);
+        pricedOrder(0, customer);
+        var draft = salePayload(a, 1, 8000000);
+        draft.put("customerId", customer.get("id").asText());
+        ok(body(post("/sales-orders"), draft), employee, 201); // drafts do not contribute
+        collect(first, 600000, UUID.randomUUID().toString());
+        var grouped = ok(get("/receivables?pageSize=1"), payer, 200);
+        assertEquals(1, grouped.get("total").asLong());
+        assertEquals(2400000, grouped.get("items").get(0).get("remainingAmount").asLong());
+        var detail = ok(get("/customers/" + customer.get("id").asText() + "/receivables?pageSize=1"), payer, 200);
+        assertEquals(2400000, detail.get("remainingAmount").asLong());
+        assertEquals(2, detail.get("orders").get("total").asLong());
+        assertEquals(1, detail.get("orders").get("items").size());
+        assertEquals(1, ok(get("/receivables/walk-in-orders"), payer, 200).get("total").asLong());
+        assertEquals(walkIn.get("id"),
+                ok(get("/receivables/walk-in-orders"), payer, 200).get("items").get(0).get("id"));
+        assertEquals(0, ok(get("/receivables?keyword=missing"), payer, 200).get("total").asLong());
+        assertEquals(0, ok(get("/receivables?keyword=%25"), payer, 200).get("total").asLong());
+        assertEquals(0, ok(get("/receivables?page=2&pageSize=1"), payer, 200).get("items").size());
+        var other = customer(b);
+        ok(get("/customers/" + other.get("id").asText() + "/receivables"), payer, 403);
+        ok(get("/receivables?warehouseId=" + b), payer, 403);
+        ok(get("/receivables/walk-in-orders?warehouseId=" + b), payer, 403);
+        pricedOrder(Long.MAX_VALUE, customer);
+        assertEquals("NUMERIC_OVERFLOW",
+                ok(get("/customers/" + customer.get("id").asText() + "/receivables"), payer, 409).get("code").asText());
+        assertEquals("NUMERIC_OVERFLOW", ok(get("/receivables"), payer, 409).get("code").asText());
+    }
+
+    @Test
+    void paymentFiltersHistoryPermissionsRevocationAndInactiveSource() throws Exception {
+        paymentFixture();
+        assign(a, outsiderId);
+        var customer = customer(a);
+        var order = pricedOrder(1000000, customer);
+        var payload = customerPayload(a, "Customer", 0);
+        ok(body(put("/customers/" + customer.get("id").asText()), payload), admin, 200);
+        var wh = warehouses.findById(UUID.fromString(a)).orElseThrow();
+        wh.setStatus((short) 0);
+        warehouses.saveAndFlush(wh);
+        String key = UUID.randomUUID().toString();
+        var payment = collect(order, 600000, key);
+        String id = payment.get("payment").get("id").asText();
+        ok(get(route(order, "")), payer, 403); // payment-only user does not need sales view
+        assertEquals(1, ok(get(route(order, "/payments")), payer, 200).get("total").asLong());
+        ok(get("/payments/" + id), payer, 200);
+        String filters = "/payments?warehouseId=" + a + "&salesOrderId=" + order.get("id").asText() + "&customerId="
+                + customer.get("id").asText() +
+                "&status=ACTIVE&method=CASH&from=2026-10-09&to=2026-10-09&pageSize=1";
+        assertEquals(1, ok(get(filters), payer, 200).get("total").asLong());
+        for (var query : List.of("?method=BANK_TRANSFER", "?to=2026-10-08", "?status=CANCELLED"))
+            assertEquals(0, ok(get("/payments" + query), payer, 200).get("total").asLong());
+        paymentCancel(payment);
+        assertEquals(0, ok(get(filters), payer, 200).get("total").asLong());
+        ok(get("/payments?from=2026-10-10&to=2026-10-09"), payer, 400);
+        ok(get("/payments?page=0"), payer, 400);
+        ok(get("/payments?pageSize=101"), payer, 400);
+        ok(get("/payments?status=WRONG"), payer, 400);
+        ok(get("/payments/" + UUID.randomUUID()), payer, 404);
+        ok(get("/payments"), "bad-token", 401);
+        ok(get("/payments"), outsider, 403);
+        ok(paymentRequest(order, UUID.randomUUID().toString(), 1), outsider, 403);
+        ok(body(post("/payments/" + id + "/cancel"), Map.of("reason", "Incorrect")), outsider, 403);
+        ok(get("/receivables"), outsider, 403);
+        ok(get("/payments?warehouseId=" + b), payer, 403);
+        // Revoke live permission while JWT remains valid.
+        stockJdbc.update(
+                "DELETE FROM role_permissions WHERE role_id IN (SELECT role_id FROM user_roles WHERE user_id=?) AND permission_id IN (SELECT id FROM permissions WHERE code='PAYMENT_CREATE')",
+                payerId);
+        ok(paymentRequest(order, key, 600000), payer, 403);
+        mvc.perform(delete("/users/" + payerId + "/warehouses/" + a).header("Authorization", "Bearer " + admin))
+                .andExpect(status().isNoContent());
+        ok(get("/payments/" + id), payer, 403);
+        ok(body(post("/payments/" + id + "/cancel"), Map.of("reason", "Incorrect")), payer, 403);
+        assertEquals(0, ok(get("/payments"), payer, 200).get("total").asLong());
+        assertEquals(0, ok(get("/receivables"), payer, 200).get("total").asLong());
+        ok(get("/customers/" + customer.get("id").asText() + "/receivables"), payer, 403);
+        ok(get(route(order, "/payments")), payer, 403);
+        // Read/cancel and retry authorization apply even to previously cancelled
+        // payments.
+    }
+
+    @Test
+    void postgresPaymentAuditGuardsRejectMutationDeletionAndPaidSaleCancellation() throws Exception {
+        String db = stockJdbc.execute((org.springframework.jdbc.core.ConnectionCallback<String>) c -> c.getMetaData()
+                .getDatabaseProductName());
+        org.junit.jupiter.api.Assumptions.assumeTrue("PostgreSQL".equals(db), "PL/pgSQL guards require PostgreSQL");
+        paymentFixture();
+        var order = pricedOrder(100, null);
+        var result = collect(order, 60, UUID.randomUUID().toString());
+        UUID payment = UUID.fromString(result.get("payment").get("id").asText());
+        UUID sale = UUID.fromString(order.get("id").asText());
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                () -> stockJdbc.update("UPDATE payments SET amount=1 WHERE id=?", payment));
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                () -> stockJdbc.update("DELETE FROM payments WHERE id=?", payment));
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class, () -> stockJdbc.update(
+                "UPDATE sales_orders SET status='CANCELLED',version=version+1,cancelled_by=?,cancelled_at=CURRENT_TIMESTAMP,cancellation_reason='Tampering',goods_returned=true WHERE id=?",
+                adminId, sale));
+        paymentCancel(result);
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                () -> stockJdbc.update("UPDATE payments SET cancellation_reason='Changed' WHERE id=?", payment));
+        assertEquals(100, ok(get(route(order, "")), employee, 200).get("remainingAmount").asLong());
+    }
+
+    @Test
+    void concurrentSameKeyAcrossWarehousesAndRetryAfterScopeRevocation() throws Exception {
+        paymentFixture();
+        assign(b, payerId);
+        var first = pricedOrder(100, null);
+        var receiptB = ok(body(post("/stock-receipts"), payload(b, 10, 0)), admin, 201);
+        ok(body(post("/stock-receipts/" + receiptB.get("id").asText() + "/confirm"), Map.of("version", 0)), admin, 200);
+        var second = ok(body(post("/sales-orders"), salePayload(b, 1, 100)), admin, 201);
+        second = ok(body(post(route(second, "/confirm")), Map.of("version", 0)), admin, 200);
+        final var orderB = second;
+        String key = UUID.randomUUID().toString();
+        var result = concurrent(
+                () -> payerStatus(paymentRequest(first, key, 60)),
+                () -> payerStatus(paymentRequest(orderB, key, 60)));
+        assertTrue(result.equals(List.of(201, 409)) || result.equals(List.of(409, 201)), result.toString());
+        assertEquals(1, ok(get("/payments"), payer, 200).get("total").asLong());
+        var successful = result.get(0) == 201 ? first : orderB;
+        String warehouse = successful.get("warehouseId").asText();
+        mvc.perform(delete("/users/" + payerId + "/warehouses/" + warehouse).header("Authorization", "Bearer " + admin))
+                .andExpect(status().isNoContent());
+        assertEquals("WAREHOUSE_ACCESS_DENIED",
+                ok(paymentRequest(successful, key, 60), payer, 403).get("code").asText());
+        assertEquals(1, ok(get("/payments"), admin, 200).get("total").asLong());
+    }
+
+    @Test
+    void paymentCorsPreflightAllowsIdempotencyHeader() throws Exception {
+        mvc.perform(options("/sales-orders/" + UUID.randomUUID() + "/payments")
+                .header("Origin", "http://localhost:5173")
+                .header("Access-Control-Request-Method", "POST")
+                .header("Access-Control-Request-Headers", "authorization,content-type,idempotency-key"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5173"))
+                .andExpect(header().string("Access-Control-Allow-Headers",
+                        org.hamcrest.Matchers.containsString("idempotency-key")));
+    }
 }

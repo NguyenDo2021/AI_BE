@@ -395,3 +395,6 @@ Reload after VERSION_CONFLICT. Confirm/cancel retries only bypass version checki
 when already in the target state; requests must still contain valid required fields.
 No payments, debt, electronic invoicing, warehouse transfer, partial delivery/returns
 are implemented. A future payment module can reference the immutable order UUID.
+
+## Payment integration
+Sales responses now include paidAmount, remainingAmount and paymentStatus. DRAFT/CANCELLED have remainingAmount=0 and omit paymentStatus. CONFIRMED zero-total orders are PAID. Cancelling an order with active payments returns 409 SALES_ORDER_HAS_PAYMENTS; no refund is implemented. See [payment contract and schemas](payments-api.md).

@@ -177,3 +177,6 @@ API kho, nhóm sản phẩm, sản phẩm và gán kho cho user: xem [tài liệ
 
 Customer and sales order API: [complete contract, examples and error codes](docs/sales-api.md).
 Implementation and verification: [sales verification](docs/sales-verification.md).
+
+Payment and customer receivables API: [contract, idempotency, errors and frontend flow](docs/payments-api.md).
+Implementation and verification: [payments verification](docs/payments-verification.md).
