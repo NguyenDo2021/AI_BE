@@ -20,6 +20,20 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 @SecurityRequirement(name = "bearerAuth")
 public class PaymentController {
     private final PaymentService service;
+    private final com.frontendbase.api.payment.print.PaymentPrintService printService;
+
+    @GetMapping("/payments/{id}/print")
+    @PreAuthorize("@paymentAccess.allowed('PAYMENT_VIEW')")
+    public org.springframework.http.ResponseEntity<byte[]> print(@PathVariable UUID id) {
+        var receipt = printService.print(id);
+        String filename = "bien-lai-" + receipt.code().replaceAll("[^A-Za-z0-9._-]", "_") + ".pdf";
+        return org.springframework.http.ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + filename + "\"")
+                .header(org.springframework.http.HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(receipt.bytes());
+    }
 
     @PostMapping("/sales-orders/{id}/payments")
     @ResponseStatus(HttpStatus.CREATED)
