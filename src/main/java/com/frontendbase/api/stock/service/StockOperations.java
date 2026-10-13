@@ -71,8 +71,8 @@ public class StockOperations {
 
     private long nextRevision(UUID warehouse, UUID product) {
         var rows = repository.jdbc().query(
-            "SELECT revision FROM inventory_balances WHERE warehouse_id=? AND product_id=? FOR UPDATE",
-            (r,n) -> r.getLong(1), warehouse, product);
+                "SELECT revision FROM inventory_balances WHERE warehouse_id=? AND product_id=? FOR UPDATE",
+                (r, n) -> r.getLong(1), warehouse, product);
         return add(rows.isEmpty() ? 0 : rows.getFirst(), 1);
     }
 
@@ -96,10 +96,12 @@ public class StockOperations {
         for (var line : lines) {
             int updated = repository.jdbc().update(
                     "UPDATE inventory_balances SET quantity=?,revision=? WHERE warehouse_id=? AND product_id=?",
-                    balances.get(line.productId()), nextRevision(warehouse, line.productId()), warehouse, line.productId());
+                    balances.get(line.productId()), nextRevision(warehouse, line.productId()), warehouse,
+                    line.productId());
             if (updated == 0)
                 repository.jdbc().update(
-                        "INSERT INTO inventory_balances(warehouse_id,product_id,quantity,revision) VALUES (?,?,?,1)", warehouse,
+                        "INSERT INTO inventory_balances(warehouse_id,product_id,quantity,revision) VALUES (?,?,?,1)",
+                        warehouse,
                         line.productId(), balances.get(line.productId()));
             repository.jdbc().update(
                     "INSERT INTO inventory_movements(id,warehouse_id,product_id,quantity_change,type,receipt_id,sales_order_id,performed_by,performed_at) VALUES (?,?,?,?,?,?,?,?,?)",
