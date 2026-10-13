@@ -20,11 +20,13 @@ public class PaymentPrintService {
     private final WarehouseAccess access;
     private final ReceiptPdfService pdf;
 
-    public record PrintedReceipt(String code, byte[] bytes) {}
+    public record PrintedReceipt(String code, byte[] bytes) {
+    }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PrintedReceipt print(UUID id) {
-        // Also protect internal callers; fetch customer/warehouse/user only after authorization.
+        // Also protect internal callers; fetch customer/warehouse/user only after
+        // authorization.
         if (!permissions.allowed("PAYMENT_VIEW"))
             throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "Bạn không có quyền xem phiếu thu");
         var payment = payments.payment(id, false);
@@ -38,10 +40,11 @@ public class PaymentPrintService {
                 """, (r, n) -> new ReceiptData(payment.code(), payment.paymentDate(),
                 r.getString("warehouse_name"), r.getString("warehouse_address"),
                 r.getString("customer_name") == null || r.getString("customer_name").isBlank()
-                    ? "Khách lẻ" : r.getString("customer_name"),
+                        ? "Khách lẻ"
+                        : r.getString("customer_name"),
                 r.getString("customer_address"),
                 "Thu tiền đơn bán " + r.getString("order_code")
-                    + (payment.note() == null || payment.note().isBlank() ? "" : ". " + payment.note()),
+                        + (payment.note() == null || payment.note().isBlank() ? "" : ". " + payment.note()),
                 payment.amount(), r.getString("full_name"), payment.status() == Status.CANCELLED,
                 payment.cancellationReason()), payment.warehouseId(), payment.createdBy(), payment.salesOrderId());
         return new PrintedReceipt(payment.code(), pdf.render(data));

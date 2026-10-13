@@ -13,9 +13,9 @@ import org.springframework.stereotype.Service;
 public class ReceiptPdfService {
     public byte[] render(ReceiptData data) {
         try (var document = new PDDocument();
-             var regular = new ClassPathResource("fonts/NotoSans-Regular.ttf").getInputStream();
-             var bold = new ClassPathResource("fonts/NotoSans-Bold.ttf").getInputStream();
-             var output = new ByteArrayOutputStream()) {
+                var regular = new ClassPathResource("fonts/NotoSans-Regular.ttf").getInputStream();
+                var bold = new ClassPathResource("fonts/NotoSans-Bold.ttf").getInputStream();
+                var output = new ByteArrayOutputStream()) {
             var normalFont = PDType0Font.load(document, regular);
             var boldFont = PDType0Font.load(document, bold);
             try (var template = new ReceiptPdfTemplate(document, normalFont, boldFont, data)) {

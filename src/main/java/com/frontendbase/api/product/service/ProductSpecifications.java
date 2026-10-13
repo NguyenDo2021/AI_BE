@@ -3,8 +3,11 @@ package com.frontendbase.api.product.service;
 import java.util.*;
 import com.frontendbase.api.product.entity.Product;
 import org.springframework.data.jpa.domain.Specification;
+
 public final class ProductSpecifications {
-    private ProductSpecifications() {}
+    private ProductSpecifications() {
+    }
+
     public static Specification<Product> matches(String keyword, Integer status) {
         return (root, query, cb) -> {
             var predicate = cb.conjunction();
@@ -14,7 +17,8 @@ public final class ProductSpecifications {
                 predicate = cb.and(predicate, cb.or(cb.like(cb.lower(root.get("code")), pattern, '!'),
                         cb.like(cb.lower(root.get("name")), pattern, '!')));
             }
-            if (status != null) predicate = cb.and(predicate, cb.equal(root.get("status"), status.shortValue()));
+            if (status != null)
+                predicate = cb.and(predicate, cb.equal(root.get("status"), status.shortValue()));
             return predicate;
         };
     }

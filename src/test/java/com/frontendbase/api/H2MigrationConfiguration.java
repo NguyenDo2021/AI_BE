@@ -58,7 +58,8 @@ public class H2MigrationConfiguration {
                     // integration tests.
                     String sql = (filename.equals("V7__protect_stock_audit_history.sql")
                             || filename.equals("V9__protect_sales_audit_history.sql")
-                            || filename.equals("V11__protect_payment_history.sql"))
+                            || filename.equals("V11__protect_payment_history.sql")
+                            || filename.equals("V13__protect_stocktake_history.sql"))
                                     ? "SELECT 1;"
                                     : compatible.toString();
                     resources.add(new LoadableResource() {

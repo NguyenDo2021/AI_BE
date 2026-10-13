@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 import org.springframework.stereotype.Component;
 import com.frontendbase.api.product.entity.Product;
 import com.frontendbase.api.product.dto.*;
+
 @Component
 public class ProductMapper {
     public void apply(ProductPayload p, Product e) {
@@ -22,7 +23,11 @@ public class ProductMapper {
         e.setDescription(p.description() == null || p.description().isBlank() ? null : p.description().trim());
         e.setStatus(p.status().shortValue());
     }
+
     public ProductResponse toResponse(Product e) {
-        return new ProductResponse(e.getId(), e.getCode(), e.getName(), e.getGroupId(), e.getMaterial(), e.getColor(), e.getDimensions(), e.getLengthMeters(), e.getUnit(), e.getReferencePurchasePrice(), e.getDefaultSalePrice(), e.getLowStockThreshold(), e.getDescription(), (int) e.getStatus(), e.getCreatedAt(), e.getUpdatedAt());
+        return new ProductResponse(e.getId(), e.getCode(), e.getName(), e.getGroupId(), e.getMaterial(), e.getColor(),
+                e.getDimensions(), e.getLengthMeters(), e.getUnit(), e.getReferencePurchasePrice(),
+                e.getDefaultSalePrice(), e.getLowStockThreshold(), e.getDescription(), (int) e.getStatus(),
+                e.getCreatedAt(), e.getUpdatedAt());
     }
 }

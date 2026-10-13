@@ -16,8 +16,7 @@ public final class UserSpecifications {
                 predicates = builder.and(predicates, builder.or(
                         builder.like(builder.lower(root.get("username")), pattern),
                         builder.like(builder.lower(root.get("fullName")), pattern),
-                        builder.like(builder.lower(root.get("email")), pattern)
-                ));
+                        builder.like(builder.lower(root.get("email")), pattern)));
             }
             if (status != null) {
                 predicates = builder.and(predicates, builder.equal(root.get("status"), status.shortValue()));

@@ -6,7 +6,9 @@ import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
-@NoArgsConstructor @AllArgsConstructor @EqualsAndHashCode
+@NoArgsConstructor
+@AllArgsConstructor
+@EqualsAndHashCode
 public class UserWarehouseId implements Serializable {
     private UUID userId;
     private UUID warehouseId;

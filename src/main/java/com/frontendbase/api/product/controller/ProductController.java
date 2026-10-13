@@ -11,11 +11,17 @@ import org.springframework.http.HttpStatus;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-@RestController @RequestMapping("/products") @Validated @RequiredArgsConstructor
+
+@RestController
+@RequestMapping("/products")
+@Validated
+@RequiredArgsConstructor
 @SecurityRequirement(name = "bearerAuth")
 public class ProductController {
     private final ProductService service;
-    @GetMapping @PreAuthorize("@warehouseAccess.isAdmin() or hasAuthority('PRODUCT_VIEW')")
+
+    @GetMapping
+    @PreAuthorize("@warehouseAccess.isAdmin() or hasAuthority('PRODUCT_VIEW')")
     public ProductPageResponse list(
             @RequestParam(defaultValue = "1") @Min(1) int page,
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) int pageSize,
@@ -24,12 +30,22 @@ public class ProductController {
             @RequestParam(required = false) UUID groupId) {
         return service.search(page, pageSize, keyword, status, groupId);
     }
-    @GetMapping("/{id}") @PreAuthorize("@warehouseAccess.isAdmin() or hasAuthority('PRODUCT_VIEW')")
-    public ProductResponse get(@PathVariable UUID id) { return service.get(id); }
-    @PostMapping @ResponseStatus(HttpStatus.CREATED)
+
+    @GetMapping("/{id}")
+    @PreAuthorize("@warehouseAccess.isAdmin() or hasAuthority('PRODUCT_VIEW')")
+    public ProductResponse get(@PathVariable UUID id) {
+        return service.get(id);
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("@warehouseAccess.isAdmin() or hasAuthority('PRODUCT_CREATE')")
-    public ProductResponse create(@Valid @RequestBody ProductPayload payload) { return service.create(payload); }
-    @PutMapping("/{id}") @PreAuthorize("@warehouseAccess.isAdmin() or hasAuthority('PRODUCT_UPDATE')")
+    public ProductResponse create(@Valid @RequestBody ProductPayload payload) {
+        return service.create(payload);
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("@warehouseAccess.isAdmin() or hasAuthority('PRODUCT_UPDATE')")
     public ProductResponse update(@PathVariable UUID id, @Valid @RequestBody ProductPayload payload) {
         return service.update(id, payload);
     }

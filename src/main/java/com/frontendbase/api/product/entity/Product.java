@@ -6,11 +6,15 @@ import java.math.BigDecimal;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+
 @Entity
 @Table(name = "products")
-@Getter @Setter @NoArgsConstructor
+@Getter
+@Setter
+@NoArgsConstructor
 public class Product {
-    @Id private UUID id;
+    @Id
+    private UUID id;
     @Column(nullable = false, length = 80, unique = true)
     private String code;
     @Column(nullable = false, length = 160)
@@ -37,7 +41,13 @@ public class Product {
     private String description;
     @Column(nullable = false, columnDefinition = "smallint")
     private short status;
-    @CreationTimestamp @Column(nullable = false, updatable = false) private Instant createdAt;
+    @CreationTimestamp
+    @Column(nullable = false, updatable = false)
+    private Instant createdAt;
     private Instant updatedAt;
-    @PreUpdate void updateTimestamp() { updatedAt = Instant.now(); }
+
+    @PreUpdate
+    void updateTimestamp() {
+        updatedAt = Instant.now();
+    }
 }

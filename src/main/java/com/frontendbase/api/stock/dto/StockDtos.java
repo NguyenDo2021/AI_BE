@@ -58,7 +58,7 @@ public final class StockDtos {
 
     public record MovementResponse(UUID id, UUID warehouseId, UUID productId, long quantityChange,
             String type, UUID receiptId, String receiptCode, String productCode, String productName,
-            String unit, UUID performedBy, Instant performedAt, UUID salesOrderId, String salesOrderCode) {
+            String unit, UUID performedBy, Instant performedAt, UUID salesOrderId, String salesOrderCode, UUID stocktakeId, String stocktakeCode) {
     }
 
     public record PageResponse<T>(List<T> items, long total, int page, int pageSize) {
