@@ -180,3 +180,6 @@ Implementation and verification: [sales verification](docs/sales-verification.md
 
 Payment and customer receivables API: [contract, idempotency, errors and frontend flow](docs/payments-api.md).
 Implementation and verification: [payments verification](docs/payments-verification.md).
+
+Báo cáo và Dashboard: [API, quyền và ví dụ dữ liệu](docs/reports-api.md).
+File triển khai và kết quả kiểm thử: [reports verification](docs/reports-verification.md).
