@@ -28,8 +28,36 @@ public class ReportRepository {
         }
 
         private <T> PageResponse<T> page(Query q, RowMapper<T> mapper, int page, int size) {
+                return page(q, mapper, page, size, null);
+        }
+
+        private <T> PageResponse<T> page(Query q, RowMapper<T> mapper, int page, int size,
+                        java.util.function.Consumer<T> sink) {
                 long total = jdbc.queryForObject("SELECT count(*) FROM (" + q.sql + ") report_rows",
                                 Long.class, q.args.toArray());
+                if (sink != null) {
+                        if (total > 100_000)
+                                throw new ApiException(HttpStatus.CONFLICT, "EXPORT_TOO_LARGE",
+                                                "Export exceeds 100,000 detail rows; narrow the filters");
+                        jdbc.query(connection -> {
+                                var statement = connection.prepareStatement(q.sql + " ORDER BY " + q.orderBy,
+                                                ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+                                try {
+                                        statement.setFetchSize(500);
+                                        for (int i = 0; i < q.args.size(); i++)
+                                                statement.setObject(i + 1, q.args.get(i));
+                                        return statement;
+                                } catch (SQLException | RuntimeException e) {
+                                        statement.close();
+                                        throw e;
+                                }
+                        }, (ResultSetExtractor<Void>) result -> {
+                                int index = 0;
+                                while (result.next()) sink.accept(mapper.mapRow(result, index++));
+                                return null;
+                        });
+                        return new PageResponse<>(List.of(), total, page, size);
+                }
                 var args = new ArrayList<>(q.args);
                 args.add(size);
                 args.add(((long) page - 1) * size);
@@ -37,6 +65,14 @@ public class ReportRepository {
                                 + " LIMIT ? OFFSET ?",
                                 mapper, args.toArray());
                 return new PageResponse<>(items, total, page, size);
+        }
+
+        public List<String> warehouseLabels(Scope scope) {
+                var args = new ArrayList<Object>();
+                return jdbc.query("SELECT w.id,w.code,w.name FROM warehouses w WHERE 1=1"
+                                + scope.where("w.id", args) + " ORDER BY w.id",
+                                (r, n) -> r.getString("id") + " | " + r.getString("code") + " | " + r.getString("name"),
+                                args.toArray());
         }
 
         private String product(UUID productId, String column, List<Object> args) {
@@ -70,8 +106,11 @@ public class ReportRepository {
                                         "Balances differ from movement history; reconcile source documents before reporting historical stock");
         }
 
-        public PageResponse<InventoryRow> inventory(Scope scope, UUID productId, ReportPeriod period, int page,
-                        int size) {
+        public PageResponse<InventoryRow> inventory(Scope scope, UUID productId, ReportPeriod period, int page, int size) {
+                return inventory(scope, productId, period, page, size, null);
+        }
+
+        public PageResponse<InventoryRow> inventory(Scope scope, UUID productId, ReportPeriod period, int page, int size, java.util.function.Consumer<InventoryRow> sink) {
                 var args = new ArrayList<Object>();
                 args.add(period.start());
                 StringBuilder select = new StringBuilder(
@@ -108,7 +147,7 @@ public class ReportRepository {
                                 exact(r, "sale_cancellation_quantity"),
                                 exact(r, "adjustment_increase_quantity"), exact(r, "adjustment_decrease_quantity"),
                                 exact(r, "closing_quantity")),
-                                page, size);
+                                page, size, sink);
         }
 
         private Query salesQuery(Scope scope, ReportPeriod period) {
@@ -166,9 +205,12 @@ public class ReportRepository {
         }
 
         public PageResponse<SalesRow> sales(Scope scope, ReportPeriod period, int page, int size) {
+                return sales(scope, period, page, size, null);
+        }
+
+        public PageResponse<SalesRow> sales(Scope scope, ReportPeriod period, int page, int size, java.util.function.Consumer<SalesRow> sink) {
                 return page(salesQuery(scope, period), (r, n) -> new SalesRow(r.getObject("warehouse_id", UUID.class),
-                                r.getString("warehouse_code"), r.getString("warehouse_name"), salesMetrics(r)), page,
-                                size);
+                                r.getString("warehouse_code"), r.getString("warehouse_name"), salesMetrics(r)), page, size, sink);
         }
 
         private Query paymentsQuery(Scope scope, ReportPeriod period) {
@@ -217,11 +259,15 @@ public class ReportRepository {
         }
 
         public PageResponse<PaymentRow> payments(Scope scope, ReportPeriod period, int page, int size) {
+                return payments(scope, period, page, size, null);
+        }
+
+        public PageResponse<PaymentRow> payments(Scope scope, ReportPeriod period, int page, int size, java.util.function.Consumer<PaymentRow> sink) {
                 return page(paymentsQuery(scope, period),
                                 (r, n) -> new PaymentRow(r.getObject("warehouse_id", UUID.class),
                                                 r.getString("warehouse_code"), r.getString("warehouse_name"),
                                                 paymentMetrics(r)),
-                                page, size);
+                                page, size, sink);
         }
 
         public ReceivablesSummary receivables(Scope scope, Instant asOf) {
@@ -263,6 +309,10 @@ public class ReportRepository {
         }
 
         public PageResponse<LowStockRow> lowStock(Scope scope, UUID productId, int page, int size) {
+                return lowStock(scope, productId, page, size, null);
+        }
+
+        public PageResponse<LowStockRow> lowStock(Scope scope, UUID productId, int page, int size, java.util.function.Consumer<LowStockRow> sink) {
                 return page(lowStockQuery(scope, productId),
                                 (r, n) -> new LowStockRow(r.getObject("warehouse_id", UUID.class),
                                                 r.getString("warehouse_code"), r.getString("warehouse_name"),
@@ -271,6 +321,6 @@ public class ReportRepository {
                                                 r.getString("unit"),
                                                 exact(r, "quantity"), exact(r, "low_stock_threshold"),
                                                 exact(r, "shortage_quantity")),
-                                page, size);
+                                page, size, sink);
         }
 }
