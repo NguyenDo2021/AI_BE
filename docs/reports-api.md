@@ -179,5 +179,5 @@ Ví dụ lỗi:
 {"timestamp":"2026-10-13T02:00:00Z","status":409,"code":"NUMERIC_OVERFLOW","message":"Amount limit exceeded","details":{}}
 ~~~
 
-Chưa triển khai Excel/PDF, biểu đồ FE, giá vốn, lợi nhuận, VAT hay công nợ lịch sử.
+Xuất Excel inventory/sales/payments/low-stock: [API contract và hướng dẫn FE](report-excel-export.md). Chưa triển khai PDF báo cáo, biểu đồ FE, giá vốn, lợi nhuận, VAT hay công nợ lịch sử.
 File thay đổi/kết quả thực chạy: [reports-verification.md](reports-verification.md).

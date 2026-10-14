@@ -521,7 +521,213 @@ class ReportApiIntegrationTest {
         for (String path : List.of("inventory?" + PERIOD, "sales?" + PERIOD, "payments?" + PERIOD,
                 "receivables-summary", "low-stock", "dashboard?" + PERIOD))
             report(path);
+        for (String kind : List.of("inventory", "sales", "payments", "low-stock"))
+            exportBytes(kind + "/export" + (kind.equals("low-stock") ? "" : "?" + PERIOD), admin);
         for (String table : tables)
             assertEquals(before.get(table), jdbc.queryForList("SELECT * FROM " + table));
+    }
+
+    byte[] exportBytes(String path, String token) throws Exception {
+        return mvc.perform(get("/reports/" + path).header("Authorization", "Bearer " + token)
+                .header("Origin", "http://localhost:5173"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("Access-Control-Expose-Headers", "Location, Content-Disposition"))
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.startsWith("attachment; filename=\"")))
+                .andReturn().getResponse().getContentAsByteArray();
+    }
+
+    org.apache.poi.xssf.usermodel.XSSFWorkbook workbook(byte[] bytes) throws Exception {
+        return new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(bytes));
+    }
+
+    @Test
+    void excelReadsAllCursorRowsInApiOrderAndKeepsStrings() throws Exception {
+        var batch = new ArrayList<Object[]>();
+        for (int i = 0; i < 520; i++) batch.add(new Object[]{id(), "X" + i,
+                "=Tên sản phẩm tiếng Việt rất dài " + i, group});
+        jdbc.batchUpdate("INSERT INTO products(id,code,name,group_id,low_stock_threshold,status) VALUES (?,?,?,?,5,1)", batch);
+        var expected = new ArrayList<JsonNode>();
+        for (int page = 1; ; page++) {
+            var items = getReport("low-stock?warehouseId=" + a + "&pageSize=100&page=" + page, staff, 200).get("items");
+            items.forEach(expected::add); if (items.size() < 100) break;
+        }
+        var before = jdbc.queryForList("SELECT * FROM inventory_balances ORDER BY warehouse_id,product_id");
+        try (var wb = workbook(exportBytes("low-stock/export?warehouseId=" + a, staff))) {
+            var sheet = wb.getSheet("Chi tiết"); assertEquals(521, sheet.getLastRowNum());
+            assertNotNull(sheet.getPaneInformation()); assertTrue(sheet.getCTWorksheet().isSetAutoFilter());
+            for (int i = 0; i < expected.size(); i++) {
+                var row = sheet.getRow(i + 1); assertEquals(i + 1, row.getCell(0).getNumericCellValue());
+                assertEquals(expected.get(i).get("productId").asText(), row.getCell(4).getStringCellValue());
+                assertEquals(expected.get(i).get("productName").asText(), row.getCell(6).getStringCellValue());
+                assertEquals(org.apache.poi.ss.usermodel.CellType.STRING, row.getCell(6).getCellType());
+                assertEquals(a.toString(), row.getCell(1).getStringCellValue());
+            }
+            assertNull(wb.getSheet("Tổng hợp"));
+        }
+        assertEquals(before, jdbc.queryForList("SELECT * FROM inventory_balances ORDER BY warehouse_id,product_id"));
+    }
+
+    @Test
+    void excelInventoryUsesHistoricalClosingAndProductFilter() throws Exception {
+        receipt(a, p, 100, DAY1); sale(a, p, 10, 10, null, DAY1, true);
+        receipt(a, p, 20, DAY2); receipt(a, p2, 4, DAY1); receipt(b, p, 9, DAY1);
+        var api = getReport("inventory?" + PERIOD + "&warehouseId=" + a + "&productId=" + p, staff, 200).get("items").get(0);
+        try (var wb = workbook(exportBytes("inventory/export?" + PERIOD + "&warehouseId=" + a + "&productId=" + p, staff))) {
+            assertEquals(1, wb.getSheet("Chi tiết").getLastRowNum());
+            var row = wb.getSheet("Chi tiết").getRow(1);
+            assertEquals(api.get("closingQuantity").asLong(), row.getCell(16).getNumericCellValue());
+            assertEquals(90, row.getCell(16).getNumericCellValue()); assertNull(wb.getSheet("Tổng hợp"));
+        }
+    }
+
+    @Test
+    void excelSalesAndPaymentSummariesMatchApiAndNegativeNet() throws Exception {
+        receipt(a, p, 2, DAY1);
+        var sold = sale(a, p, 2, 10, null, DAY1, true);
+        var pay = payment(sold, a, null, 20, "CASH", DAY1);
+        cancelPayment(pay, DAY2); cancelSale(sold, a, p, 2, DAY2);
+        for (String kind : List.of("sales", "payments")) {
+            String period = "from=2026-10-12&to=2026-10-12";
+            var api = report(kind + "?" + period);
+            try (var wb = workbook(exportBytes(kind + "/export?" + period, admin))) {
+                var summary = wb.getSheet("Tổng hợp"); assertEquals(9, summary.getPhysicalNumberOfRows());
+                var fields = api.get("summary").fields(); int i = 0;
+                while (fields.hasNext()) assertEquals(fields.next().getValue().asLong(), summary.getRow(i++).getCell(1).getNumericCellValue());
+                assertEquals(-20, summary.getRow(8).getCell(1).getNumericCellValue());
+            }
+        }
+    }
+
+    @Test
+    void excelLargeLongAmountsAreExactTextAndFilenameIsSafe() throws Exception {
+        receipt(a, p, 1, DAY1);
+        var sold = sale(a, p, 1, Long.MAX_VALUE, null, DAY1, true);
+        payment(sold, a, null, Long.MAX_VALUE, "BANK_TRANSFER", DAY1);
+        for (String kind : List.of("sales", "payments")) {
+            try (var wb = workbook(exportBytes(kind + "/export?" + PERIOD + "&warehouseId=" + a, admin))) {
+                assertEquals(Long.toString(Long.MAX_VALUE), wb.getSheet("Tổng hợp").getRow(8).getCell(1).getStringCellValue());
+                assertEquals(Long.toString(Long.MAX_VALUE), wb.getSheet("Chi tiết").getRow(1).getCell(12).getStringCellValue());
+            }
+        }
+        mvc.perform(get("/reports/sales/export?" + PERIOD).header("Authorization", "Bearer " + admin))
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"ban-hang_2026-10-11_2026-10-11.xlsx\""));
+    }
+
+    @Test
+    void excelEmptyReportsAreValidAndDoNotLeakWarehouseNames() throws Exception {
+        jdbc.update("UPDATE products SET low_stock_threshold=0");
+        for (String kind : List.of("inventory", "sales", "payments", "low-stock")) {
+            String query = kind.equals("low-stock") ? "" : "?" + PERIOD;
+            try (var wb = workbook(exportBytes(kind + "/export" + query, staff))) {
+                assertEquals("Không có dữ liệu", wb.getSheet("Chi tiết").getRow(1).getCell(0).getStringCellValue());
+                for (var row : wb.getSheet("Thông tin")) assertFalse(row.getCell(1).toString().contains(b.toString()));
+            }
+        }
+    }
+
+    @Test
+    void excelBusinessErrorsStayJsonAndRespectPermissions() throws Exception {
+        for (String kind : List.of("inventory", "sales", "payments", "low-stock")) {
+            String query = kind.equals("low-stock") ? "" : "&" + PERIOD;
+            getReport(kind + "/export?warehouseId=" + b + query, staff, 403);
+            getReport(kind + "/export?warehouseId=" + a + query, token(), 403);
+            mvc.perform(get("/reports/" + kind + "/export?page=1" + query).header("Authorization", "Bearer " + admin))
+                    .andExpect(status().isBadRequest()).andExpect(content().contentType("application/json"));
+        }
+        getReport("inventory/export?" + PERIOD + "&warehouseId=bad", admin, 400);
+        assertEquals("INVALID_DATE_RANGE", getReport("sales/export?from=bad&to=2026-10-11", admin, 400).get("code").asText());
+        getReport("low-stock/export?from=2026-10-11", admin, 400);
+        jdbc.update("INSERT INTO inventory_balances(warehouse_id,product_id,quantity,revision) VALUES (?,?,5,1)", a, p);
+        assertEquals("INVENTORY_HISTORY_INCONSISTENT", getReport("inventory/export?" + PERIOD, admin, 409).get("code").asText());
+        receipt(b, p, 1, DAY1);
+        sale(a, p, 1, Long.MAX_VALUE, null, DAY1, true); sale(b, p, 1, 1, null, DAY1, true);
+        assertEquals("NUMERIC_OVERFLOW", getReport("sales/export?" + PERIOD, admin, 409).get("code").asText());
+    }
+
+    @Test
+    void excelCompletedRequestDeletesStagedFileAndWritesSample() throws Exception {
+        receipt(a, p, 3, DAY1);
+        var sold = sale(a, p, 1, 100, null, DAY1, true);
+        payment(sold, a, null, 50, "CASH", DAY1);
+        java.nio.file.Path temp = java.nio.file.Path.of(System.getProperty("java.io.tmpdir"));
+        Set<String> before;
+        try (var paths = java.nio.file.Files.list(temp)) { before = paths.filter(x -> x.getFileName().toString().startsWith("report-export-")).map(Object::toString).collect(java.util.stream.Collectors.toSet()); }
+        byte[] bytes = exportBytes("low-stock/export?warehouseId=" + a, staff);
+        try (var paths = java.nio.file.Files.list(temp)) { assertEquals(before, paths.filter(x -> x.getFileName().toString().startsWith("report-export-")).map(Object::toString).collect(java.util.stream.Collectors.toSet())); }
+        // Test fixtures only; clearly marked example, never presented as store data.
+        var samples = java.nio.file.Path.of("target", "report-export-samples"); java.nio.file.Files.createDirectories(samples);
+        java.nio.file.Files.write(samples.resolve("ton-thap_test-fixture.xlsx"), bytes);
+        for (String kind : List.of("inventory", "sales", "payments"))
+            java.nio.file.Files.write(samples.resolve(kind + "_test-fixture.xlsx"),
+                    exportBytes(kind + "/export?" + PERIOD + "&warehouseId=" + a, staff));
+    }
+
+    @Test
+    void excelRealRowLimitReturnsJsonBeforeFileHeaders() throws Exception {
+        var warehouses = new ArrayList<Object[]>(); var products = new ArrayList<Object[]>();
+        for (int i = 0; i < 316; i++) warehouses.add(new Object[]{id(), "LIMIT_W" + i, "Limit warehouse"});
+        for (int i = 0; i < 315; i++) products.add(new Object[]{id(), "LIMIT_P" + i, "Limit product", group});
+        jdbc.batchUpdate("INSERT INTO warehouses(id,code,name,status) VALUES (?,?,?,1)", warehouses);
+        jdbc.batchUpdate("INSERT INTO products(id,code,name,group_id,low_stock_threshold,status) VALUES (?,?,?,?,1,1)", products);
+        mvc.perform(get("/reports/low-stock/export").header("Authorization", "Bearer " + admin))
+                .andExpect(status().isConflict()).andExpect(content().contentType("application/json"))
+                .andExpect(header().doesNotExist("Content-Disposition"))
+                .andExpect(jsonPath("$.code").value("EXPORT_TOO_LARGE"));
+        // Scope is applied before count: the same data still fits a staff export.
+        try (var wb = workbook(exportBytes("low-stock/export", staff))) {
+            assertEquals(316, wb.getSheet("Chi tiết").getLastRowNum());
+        }
+    }
+
+    @Autowired com.frontendbase.api.report.repository.ReportRepository reportRepository;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
+
+    @Test
+    void excelPostgresCursorAndSummaryShareSnapshotDuringConcurrentCommit() throws Exception {
+        try (var connection = jdbc.getDataSource().getConnection()) {
+            Assumptions.assumeTrue(connection.getMetaData().getDatabaseProductName().equals("PostgreSQL"));
+        }
+        receipt(a, p, 5, DAY1); receipt(b, p, 5, DAY1);
+        sale(a, p, 1, 10, null, DAY1, true);
+        var transaction = new org.springframework.transaction.support.TransactionTemplate(transactions);
+        transaction.setReadOnly(true);
+        transaction.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_REPEATABLE_READ);
+        var scope = new com.frontendbase.api.report.service.ReportAccess.Scope(null, null);
+        var period = ReportPeriod.parse("2026-10-11", "2026-10-11");
+        transaction.executeWithoutResult(status -> {
+            var summary = reportRepository.salesSummary(scope, period);
+            var rows = new ArrayList<com.frontendbase.api.report.dto.ReportDtos.SalesRow>();
+            reportRepository.sales(scope, period, 1, 500, row -> {
+                rows.add(row);
+                java.util.concurrent.CompletableFuture.runAsync(() -> sale(b, p, 1, 20, null, DAY1, true)).join();
+            });
+            assertEquals(1, rows.size()); assertEquals(10, rows.get(0).metrics().netSalesAmount());
+            assertEquals(summary, reportRepository.salesSummary(scope, period));
+        });
+        assertEquals(30, reportRepository.salesSummary(scope, period).netSalesAmount());
+    }
+
+    @Autowired com.frontendbase.api.report.service.ReportExportService exportService;
+
+    @Test
+    void excelRollbackDeletesCompletedFileBeforeItCanBeSent() {
+        var previous = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(actor.toString(), null, List.of()));
+        try {
+            var transaction = new org.springframework.transaction.support.TransactionTemplate(transactions);
+            transaction.setReadOnly(true);
+            transaction.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_REPEATABLE_READ);
+            var file = transaction.execute(status -> {
+                var export = exportService.export(com.frontendbase.api.report.service.ReportExportService.Kind.LOW_STOCK,
+                        a, null, null, null);
+                assertTrue(java.nio.file.Files.exists(export.path()));
+                status.setRollbackOnly();
+                return export;
+            });
+            assertNotNull(file); assertFalse(java.nio.file.Files.exists(file.path()));
+        } finally { org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(previous); }
     }
 }
