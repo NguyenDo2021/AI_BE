@@ -2,11 +2,11 @@
 
 ## Chạy và migration
 
-Yêu cầu JDK 21. Maven Wrapper trong project dùng Maven 3.9.9. PostgreSQL theo `compose.yaml` dùng phiên bản 16; cấu hình mặc định dùng database/user `frontend_base`.
+Yêu cầu JDK 25 LTS. Maven Wrapper trong project dùng Maven 3.9.9. PostgreSQL theo `compose.yaml` dùng phiên bản 16; cấu hình mặc định dùng database/user `frontend_base`.
 
 ```powershell
-# Chỉ cần đặt JAVA_HOME nếu Java mặc định chưa phải 21; thay bằng đường dẫn JDK của bạn.
-$env:JAVA_HOME = 'C:\Users\dont\.jdk\jdk-21\jdk-21.0.10'
+# Chỉ cần đặt JAVA_HOME nếu Java mặc định chưa phải 25; thay bằng đường dẫn JDK 25 của bạn.
+$env:JAVA_HOME = 'C:\Users\dont\AppData\Local\jdks\jdk-25.0.2'
 $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 docker compose up -d postgres
 .\mvnw.cmd spring-boot:run

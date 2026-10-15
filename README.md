@@ -120,7 +120,7 @@ The FE has no logout request, so the backend does not invent one. Its current lo
 
 ## Run locally
 
-Requirements: Java 21+, Docker with Compose, Maven 3.9+ (or use the Maven Wrapper if generated in this workspace).
+Requirements: Java 25 LTS, Docker with Compose, Maven 3.9+ (or use the Maven Wrapper if generated in this workspace).
 
 From `backend/`:
 
