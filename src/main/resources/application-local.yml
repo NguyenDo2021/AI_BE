@@ -1,3 +1,8 @@
+spring:
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/frontend_base}
+    username: ${DATABASE_USERNAME:frontend_base}
+    password: ${DATABASE_PASSWORD:frontend_base_dev}
 app:
   security:
     jwt:
