@@ -26,8 +26,8 @@ public class ReportExportService {
         @Override public void close() throws IOException { Files.deleteIfExists(path); }
     }
     static final String[] PRODUCT = {"UUID kho", "Mã kho", "Tên kho", "UUID sản phẩm", "Mã sản phẩm", "Tên sản phẩm", "Đơn vị"};
-    static final String[] SALES = {"Số đơn xác nhận", "Số đơn đã xác nhận bị hủy", "Số lượng xác nhận", "Số lượng hủy", "Giá trị bán trước giảm giá", "Giảm giá", "Giá trị bán xác nhận", "Giá trị bán hủy", "Giá trị bán thuần"};
-    static final String[] PAYMENTS = {"Số phiếu thu tạo", "Số phiếu thu hủy", "Tiền mặt ghi nhận", "Chuyển khoản ghi nhận", "Tiền mặt đảo ghi nhận", "Chuyển khoản đảo ghi nhận", "Tiền mặt thuần", "Chuyển khoản thuần", "Tổng thu ghi nhận thuần"};
+    static final String[] SALES = {"Số đơn xác nhận", "Số đơn đã xác nhận bị hủy", "Số lượng xác nhận", "Số lượng hủy", "Giá trị bán trước giảm giá", "Giảm giá", "Giá trị bán xác nhận", "Giá trị bán hủy", "Giá trị bán thuần", "Giá trị hàng trả"};
+    static final String[] PAYMENTS = {"Số phiếu thu tạo", "Số phiếu thu hủy", "Tiền mặt ghi nhận", "Chuyển khoản ghi nhận", "Tiền mặt đảo ghi nhận", "Chuyển khoản đảo ghi nhận", "Tiền mặt thuần", "Chuyển khoản thuần", "Tổng thu ghi nhận thuần", "Số phiếu hoàn tạo", "Số phiếu hoàn hủy", "Hoàn tiền mặt", "Hoàn chuyển khoản", "Đảo hoàn tiền mặt", "Đảo hoàn chuyển khoản", "Hoàn tiền mặt thuần", "Hoàn chuyển khoản thuần", "Tổng hoàn thuần", "Dòng tiền ghi nhận thuần"};
     private static String[] concat(String[] a, String... b) {
         return java.util.stream.Stream.concat(java.util.Arrays.stream(a), java.util.Arrays.stream(b)).toArray(String[]::new);
     }
@@ -54,7 +54,7 @@ public class ReportExportService {
         };
         String filename = prefix + "_" + (period == null ? generatedAt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")) : period.from() + "_" + period.to()) + ".xlsx";
         String[] headers = switch (kind) {
-            case INVENTORY -> concat(PRODUCT, "Trạng thái sản phẩm", "Tồn đầu kỳ", "Nhập", "Hủy nhập", "Xuất bán", "Hủy bán", "Điều chỉnh tăng", "Điều chỉnh giảm", "Tồn cuối kỳ");
+            case INVENTORY -> concat(PRODUCT, "Trạng thái sản phẩm", "Tồn đầu kỳ", "Nhập", "Hủy nhập", "Xuất bán", "Hủy bán", "Điều chỉnh tăng", "Điều chỉnh giảm", "Tồn cuối kỳ", "Hàng bán trả lại");
             case SALES -> concat(new String[]{"UUID kho", "Mã kho", "Tên kho"}, SALES);
             case PAYMENTS -> concat(new String[]{"UUID kho", "Mã kho", "Tên kho"}, PAYMENTS);
             case LOW_STOCK -> concat(PRODUCT, "Tồn hiện tại", "Ngưỡng tồn thấp", "Số lượng thiếu");

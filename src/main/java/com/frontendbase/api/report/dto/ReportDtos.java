@@ -16,12 +16,12 @@ public final class ReportDtos {
                         UUID productId, String productCode, String productName, String unit, short productStatus,
                         long openingQuantity, long receiptQuantity, long receiptCancellationQuantity,
                         long saleQuantity, long saleCancellationQuantity, long adjustmentIncreaseQuantity,
-                        long adjustmentDecreaseQuantity, long closingQuantity) {
+                        long adjustmentDecreaseQuantity, long closingQuantity, long saleReturnQuantity) {
         }
 
         public record SalesSummary(long confirmedOrderCount, long cancelledConfirmedOrderCount,
                         long confirmedQuantity, long cancelledQuantity, long grossSalesAmount, long discountAmount,
-                        long confirmedSalesAmount, long cancelledSalesAmount, long netSalesAmount) {
+                        long confirmedSalesAmount, long cancelledSalesAmount, long netSalesAmount, long returnedSalesAmount) {
         }
 
         public record SalesRow(UUID warehouseId, String warehouseCode, String warehouseName,
@@ -31,7 +31,11 @@ public final class ReportDtos {
         public record PaymentSummary(long createdPaymentCount, long cancelledPaymentCount,
                         long recordedCashAmount, long recordedBankTransferAmount, long reversedCashAmount,
                         long reversedBankTransferAmount, long netCashAmount, long netBankTransferAmount,
-                        long netRecordedAmount) {
+                        long netRecordedAmount, long createdRefundCount, long cancelledRefundCount,
+                        long recordedRefundCashAmount, long recordedRefundBankTransferAmount,
+                        long reversedRefundCashAmount, long reversedRefundBankTransferAmount,
+                        long netRefundedCashAmount, long netRefundedBankTransferAmount,
+                        long netRefundedAmount, long netCashFlowAmount) {
         }
 
         public record PaymentRow(UUID warehouseId, String warehouseCode, String warehouseName,
@@ -58,7 +62,9 @@ public final class ReportDtos {
         public record PeriodSections(SalesSummary sales, PaymentSummary payments, String timeBasis) {
         }
 
-        public record CurrentSections(ReceivablesSummary receivables, LowStockSummary lowStock, String timeBasis) {
+        public record RefundablesSummary(long refundableOrderCount, long refundableAmount, Instant asOf) {}
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        public record CurrentSections(ReceivablesSummary receivables, LowStockSummary lowStock, String timeBasis, RefundablesSummary refunds) {
         }
 
         @JsonInclude(JsonInclude.Include.NON_NULL)

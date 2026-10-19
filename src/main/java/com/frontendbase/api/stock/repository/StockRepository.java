@@ -70,6 +70,6 @@ public class StockRepository {
                 r.getLong("quantity_change"), r.getString("type"), uuid(r, "receipt_id"),
                 r.getString("receipt_code"), r.getString("product_code"), r.getString("product_name"),
                 r.getString("unit"), uuid(r, "performed_by"), instant(r, "performed_at"), uuid(r, "sales_order_id"),
-                r.getString("sales_order_code"), uuid(r, "stocktake_id"), r.getString("stocktake_code"));
+                r.getString("sales_order_code"), uuid(r, "stocktake_id"), r.getString("stocktake_code"), uuid(r,"sales_return_id"), r.getString("sales_return_code"));
     }
 }

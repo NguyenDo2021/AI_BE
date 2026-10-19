@@ -34,7 +34,7 @@ public class PaymentService {
     }
 
     private OrderPaymentSummary summary(SalesResponse s) {
-        return new OrderPaymentSummary(s.id(), s.totalAmount(), s.paidAmount(), s.remainingAmount(), s.paymentStatus());
+        return new OrderPaymentSummary(s.id(), s.totalAmount(), s.paidAmount(), s.remainingAmount(), s.paymentStatus(), s.returnedAmount(), s.adjustedTotalAmount(), s.refundedAmount(), s.netPaidAmount(), s.refundableAmount());
     }
 
     private UUID key(String raw) {
@@ -80,9 +80,11 @@ public class PaymentService {
     @Transactional
     public MutationResponse cancel(UUID id, CancelPayload p) {
         var initial = repository.payment(id, false);
-        locked(initial.salesOrderId());
+        var order = locked(initial.salesOrderId());
         var payment = repository.payment(id, true);
         access.requireWarehouse(payment.warehouseId());
+        if (payment.status() == Status.ACTIVE && order.paidAmount()-payment.amount()<order.refundedAmount())
+            throw operations.conflict("PAYMENT_BELOW_REFUNDED", "Cancellation would reduce paid amount below active refunds");
         if (payment.status() == Status.ACTIVE)
             repository.jdbc().update(
                     "UPDATE payments SET status='CANCELLED',cancelled_by=?,cancelled_at=?,cancellation_reason=? WHERE id=?",

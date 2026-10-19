@@ -82,6 +82,15 @@ public class StockOperations {
     // rows.
     public void movements(UUID warehouse, UUID source, List<LineResponse> lines, boolean increase, boolean sale,
             String type, UUID actor, Instant now) {
+        movements(warehouse,source,lines,increase,sale,type,actor,now,null);
+    }
+
+    public void returnMovements(UUID warehouse, UUID source, List<LineResponse> lines, UUID actor, Instant now) {
+        movements(warehouse,null,lines,true,false,"SALE_RETURN",actor,now,source);
+    }
+
+    private void movements(UUID warehouse, UUID source, List<LineResponse> lines, boolean increase, boolean sale,
+            String type, UUID actor, Instant now, UUID salesReturn) {
         Map<UUID, Long> balances = new LinkedHashMap<>();
         for (var line : lines.stream().sorted(Comparator.comparing(LineResponse::productId)).toList()) {
             var current = repository.jdbc().query(
@@ -104,9 +113,9 @@ public class StockOperations {
                         warehouse,
                         line.productId(), balances.get(line.productId()));
             repository.jdbc().update(
-                    "INSERT INTO inventory_movements(id,warehouse_id,product_id,quantity_change,type,receipt_id,sales_order_id,performed_by,performed_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO inventory_movements(id,warehouse_id,product_id,quantity_change,type,receipt_id,sales_order_id,performed_by,performed_at,sales_return_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
                     UUID.randomUUID(), warehouse, line.productId(), increase ? line.quantity() : -line.quantity(), type,
-                    sale ? null : source, sale ? source : null, actor, Timestamp.from(now));
+                    sale ? null : source, sale ? source : null, actor, Timestamp.from(now), salesReturn);
         }
     }
 }

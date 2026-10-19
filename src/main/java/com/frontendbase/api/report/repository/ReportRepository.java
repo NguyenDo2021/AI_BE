@@ -118,10 +118,10 @@ public class ReportRepository {
                                                 + "m.product_id,p.code product_code,p.name product_name,p.unit,p.status product_status,"
                                                 + "COALESCE(SUM(CASE WHEN m.performed_at<? THEN CAST(m.quantity_change AS NUMERIC) ELSE 0 END),0) opening_quantity");
                 String[] types = { "RECEIPT_CONFIRM", "RECEIPT_CANCEL", "SALE_CONFIRM", "SALE_CANCEL",
-                                "STOCKTAKE_ADJUSTMENT", "STOCKTAKE_ADJUSTMENT" };
+                                "STOCKTAKE_ADJUSTMENT", "STOCKTAKE_ADJUSTMENT", "SALE_RETURN" };
                 String[] columns = { "receipt_quantity", "receipt_cancellation_quantity", "sale_quantity",
                                 "sale_cancellation_quantity", "adjustment_increase_quantity",
-                                "adjustment_decrease_quantity" };
+                                "adjustment_decrease_quantity", "sale_return_quantity" };
                 for (int i = 0; i < types.length; i++) {
                         args.add(period.start());
                         String sign = i == 4 ? " AND m.quantity_change>0" : i == 5 ? " AND m.quantity_change<0" : "";
@@ -146,7 +146,7 @@ public class ReportRepository {
                                 exact(r, "receipt_cancellation_quantity"), exact(r, "sale_quantity"),
                                 exact(r, "sale_cancellation_quantity"),
                                 exact(r, "adjustment_increase_quantity"), exact(r, "adjustment_decrease_quantity"),
-                                exact(r, "closing_quantity")),
+                                exact(r, "closing_quantity"), exact(r,"sale_return_quantity")),
                                 page, size, sink);
         }
 
@@ -158,29 +158,36 @@ public class ReportRepository {
                                 + "COALESCE((SELECT SUM(CAST(l.quantity AS NUMERIC)) FROM sales_order_lines l WHERE l.sales_order_id=s.id),0) confirmed_quantity,"
                                 + "0 cancelled_quantity,CAST(s.subtotal AS NUMERIC) gross_sales_amount,"
                                 + "CAST(s.discount_amount AS NUMERIC) discount_amount,CAST(s.total_amount AS NUMERIC) confirmed_sales_amount,"
-                                + "0 cancelled_sales_amount FROM sales_orders s WHERE s.confirmed_at>=? AND s.confirmed_at<?"
+                                + "0 returned_sales_amount,0 cancelled_sales_amount FROM sales_orders s WHERE s.confirmed_at>=? AND s.confirmed_at<?"
                                 + scope.where("s.warehouse_id", args);
                 args.add(period.start());
                 args.add(period.end());
                 String cancelled = "SELECT s.warehouse_id,0,1,0,"
                                 + "COALESCE((SELECT SUM(CAST(l.quantity AS NUMERIC)) FROM sales_order_lines l WHERE l.sales_order_id=s.id),0),"
-                                + "0,0,0,CAST(s.total_amount AS NUMERIC) FROM sales_orders s"
+                                + "0,0,0,0,CAST(s.total_amount AS NUMERIC) FROM sales_orders s"
                                 + " WHERE s.confirmed_at IS NOT NULL AND s.cancelled_at>=? AND s.cancelled_at<?"
                                 + scope.where("s.warehouse_id", args);
+                args.add(period.start());
+                args.add(period.end());
+                String returned = "SELECT r.warehouse_id,0,0,0,0,0,0,0,CAST(r.total_amount AS NUMERIC),0 FROM sales_returns r"
+                                + " WHERE r.confirmed_at>=? AND r.confirmed_at<?"
+                                + scope.where("r.warehouse_id",args);
                 return new Query("SELECT e.warehouse_id,w.code warehouse_code,w.name warehouse_name,"
                                 + sums(SALES_COLUMNS)
-                                + ",SUM(confirmed_sales_amount)-SUM(cancelled_sales_amount) net_sales_amount"
-                                + " FROM (" + confirmed + " UNION ALL " + cancelled
+                                + ",SUM(confirmed_sales_amount)-SUM(cancelled_sales_amount)-SUM(returned_sales_amount) net_sales_amount"
+                                + " FROM (" + confirmed + " UNION ALL " + cancelled + " UNION ALL " + returned
                                 + ") e JOIN warehouses w ON w.id=e.warehouse_id"
                                 + " GROUP BY e.warehouse_id,w.code,w.name", args, "warehouse_id");
         }
 
         private static final String[] SALES_COLUMNS = { "confirmed_order_count", "cancelled_confirmed_order_count",
                         "confirmed_quantity", "cancelled_quantity", "gross_sales_amount", "discount_amount",
-                        "confirmed_sales_amount", "cancelled_sales_amount" };
+                        "confirmed_sales_amount", "cancelled_sales_amount", "returned_sales_amount" };
         private static final String[] PAYMENT_COLUMNS = { "created_payment_count", "cancelled_payment_count",
                         "recorded_cash_amount", "recorded_bank_transfer_amount", "reversed_cash_amount",
-                        "reversed_bank_transfer_amount" };
+                        "reversed_bank_transfer_amount", "created_refund_count", "cancelled_refund_count",
+                        "recorded_refund_cash_amount", "recorded_refund_bank_transfer_amount",
+                        "reversed_refund_cash_amount", "reversed_refund_bank_transfer_amount" };
 
         private String sums(String[] columns) {
                 return Arrays.stream(columns).map(c -> "COALESCE(SUM(CAST(" + c + " AS NUMERIC)),0) " + c)
@@ -193,7 +200,7 @@ public class ReportRepository {
                                 exact(r, "gross_sales_amount"),
                                 exact(r, "discount_amount"), exact(r, "confirmed_sales_amount"),
                                 exact(r, "cancelled_sales_amount"),
-                                exact(r, "net_sales_amount"));
+                                exact(r, "net_sales_amount"), exact(r,"returned_sales_amount"));
         }
 
         public SalesSummary salesSummary(Scope scope, ReportPeriod period) {
@@ -220,22 +227,39 @@ public class ReportRepository {
                 String created = "SELECT p.warehouse_id,1 created_payment_count,0 cancelled_payment_count,"
                                 + "CASE WHEN p.method='CASH' THEN CAST(p.amount AS NUMERIC) ELSE 0 END recorded_cash_amount,"
                                 + "CASE WHEN p.method='BANK_TRANSFER' THEN CAST(p.amount AS NUMERIC) ELSE 0 END recorded_bank_transfer_amount,"
-                                + "0 reversed_cash_amount,0 reversed_bank_transfer_amount FROM payments p"
+                                + "0 reversed_cash_amount,0 reversed_bank_transfer_amount,"
+                                + "0 created_refund_count,0 cancelled_refund_count,0 recorded_refund_cash_amount,"
+                                + "0 recorded_refund_bank_transfer_amount,0 reversed_refund_cash_amount,0 reversed_refund_bank_transfer_amount FROM payments p"
                                 + " WHERE p.created_at>=? AND p.created_at<?" + scope.where("p.warehouse_id", args);
                 args.add(period.start());
                 args.add(period.end());
                 String cancelled = "SELECT p.warehouse_id,0,1,0,0,"
                                 + "CASE WHEN p.method='CASH' THEN CAST(p.amount AS NUMERIC) ELSE 0 END,"
                                 + "CASE WHEN p.method='BANK_TRANSFER' THEN CAST(p.amount AS NUMERIC) ELSE 0 END"
-                                + " FROM payments p WHERE p.cancelled_at>=? AND p.cancelled_at<?"
+                                + ",0,0,0,0,0,0 FROM payments p WHERE p.cancelled_at>=? AND p.cancelled_at<?"
                                 + scope.where("p.warehouse_id", args);
+                args.add(period.start()); args.add(period.end());
+                String refundCreated = "SELECT r.warehouse_id,0,0,0,0,0,0,1,0,"
+                                + "CASE WHEN r.method='CASH' THEN CAST(r.amount AS NUMERIC) ELSE 0 END,"
+                                + "CASE WHEN r.method='BANK_TRANSFER' THEN CAST(r.amount AS NUMERIC) ELSE 0 END,0,0"
+                                + " FROM refunds r WHERE r.created_at>=? AND r.created_at<?" + scope.where("r.warehouse_id",args);
+                args.add(period.start()); args.add(period.end());
+                String refundCancelled = "SELECT r.warehouse_id,0,0,0,0,0,0,0,1,0,0,"
+                                + "CASE WHEN r.method='CASH' THEN CAST(r.amount AS NUMERIC) ELSE 0 END,"
+                                + "CASE WHEN r.method='BANK_TRANSFER' THEN CAST(r.amount AS NUMERIC) ELSE 0 END"
+                                + " FROM refunds r WHERE r.cancelled_at>=? AND r.cancelled_at<?" + scope.where("r.warehouse_id",args);
                 return new Query("SELECT e.warehouse_id,w.code warehouse_code,w.name warehouse_name,"
                                 + sums(PAYMENT_COLUMNS)
                                 + ",SUM(recorded_cash_amount)-SUM(reversed_cash_amount) net_cash_amount"
                                 + ",SUM(recorded_bank_transfer_amount)-SUM(reversed_bank_transfer_amount) net_bank_transfer_amount"
                                 + ",SUM(recorded_cash_amount)+SUM(recorded_bank_transfer_amount)"
                                 + "-SUM(reversed_cash_amount)-SUM(reversed_bank_transfer_amount) net_recorded_amount"
-                                + " FROM (" + created + " UNION ALL " + cancelled
+                                + ",SUM(recorded_refund_cash_amount)-SUM(reversed_refund_cash_amount) net_refunded_cash_amount"
+                                + ",SUM(recorded_refund_bank_transfer_amount)-SUM(reversed_refund_bank_transfer_amount) net_refunded_bank_transfer_amount"
+                                + ",SUM(recorded_refund_cash_amount)+SUM(recorded_refund_bank_transfer_amount)-SUM(reversed_refund_cash_amount)-SUM(reversed_refund_bank_transfer_amount) net_refunded_amount"
+                                + ",SUM(recorded_cash_amount)+SUM(recorded_bank_transfer_amount)-SUM(reversed_cash_amount)-SUM(reversed_bank_transfer_amount)"
+                                + "-SUM(recorded_refund_cash_amount)-SUM(recorded_refund_bank_transfer_amount)+SUM(reversed_refund_cash_amount)+SUM(reversed_refund_bank_transfer_amount) net_cash_flow_amount"
+                                + " FROM (" + created + " UNION ALL " + cancelled + " UNION ALL " + refundCreated + " UNION ALL " + refundCancelled
                                 + ") e JOIN warehouses w ON w.id=e.warehouse_id"
                                 + " GROUP BY e.warehouse_id,w.code,w.name", args, "warehouse_id");
         }
@@ -245,7 +269,11 @@ public class ReportRepository {
                                 exact(r, "recorded_cash_amount"), exact(r, "recorded_bank_transfer_amount"),
                                 exact(r, "reversed_cash_amount"), exact(r, "reversed_bank_transfer_amount"),
                                 exact(r, "net_cash_amount"), exact(r, "net_bank_transfer_amount"),
-                                exact(r, "net_recorded_amount"));
+                                exact(r, "net_recorded_amount"),exact(r,"created_refund_count"),exact(r,"cancelled_refund_count"),
+                                exact(r,"recorded_refund_cash_amount"),exact(r,"recorded_refund_bank_transfer_amount"),
+                                exact(r,"reversed_refund_cash_amount"),exact(r,"reversed_refund_bank_transfer_amount"),
+                                exact(r,"net_refunded_cash_amount"),exact(r,"net_refunded_bank_transfer_amount"),
+                                exact(r,"net_refunded_amount"),exact(r,"net_cash_flow_amount"));
         }
 
         public PaymentSummary paymentsSummary(Scope scope, ReportPeriod period) {
@@ -253,7 +281,11 @@ public class ReportRepository {
                 return jdbc.queryForObject("SELECT " + sums(PAYMENT_COLUMNS)
                                 + ",COALESCE(SUM(net_cash_amount),0) net_cash_amount"
                                 + ",COALESCE(SUM(net_bank_transfer_amount),0) net_bank_transfer_amount"
-                                + ",COALESCE(SUM(net_recorded_amount),0) net_recorded_amount FROM (" + q.sql
+                                + ",COALESCE(SUM(net_recorded_amount),0) net_recorded_amount"
+                                + ",COALESCE(SUM(net_refunded_cash_amount),0) net_refunded_cash_amount"
+                                + ",COALESCE(SUM(net_refunded_bank_transfer_amount),0) net_refunded_bank_transfer_amount"
+                                + ",COALESCE(SUM(net_refunded_amount),0) net_refunded_amount"
+                                + ",COALESCE(SUM(net_cash_flow_amount),0) net_cash_flow_amount FROM (" + q.sql
                                 + ") report_rows",
                                 (r, n) -> paymentMetrics(r), q.args.toArray());
         }
@@ -286,6 +318,13 @@ public class ReportRepository {
                                                 exact(r, "walk_in_orders"),
                                                 exact(r, "total_amount"), asOf),
                                 args.toArray());
+        }
+
+        public RefundablesSummary refundables(Scope scope, Instant asOf) {
+                var args=new ArrayList<Object>();
+                return jdbc.queryForObject("SELECT count(*) orders,COALESCE(SUM(t.refundable_amount),0) amount FROM sales_payment_totals t WHERE t.status='CONFIRMED' AND t.refundable_amount>0"
+                        + scope.where("t.warehouse_id",args),
+                        (r,n)->new RefundablesSummary(r.getLong("orders"),exact(r,"amount"),asOf),args.toArray());
         }
 
         private Query lowStockQuery(Scope scope, UUID productId) {

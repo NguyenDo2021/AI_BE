@@ -61,7 +61,16 @@ public final class PermissionCodes {
     public static final String REPORT_RECEIVABLE_VIEW = "REPORT_RECEIVABLE_VIEW";
     public static final String REPORT_LOW_STOCK_VIEW = "REPORT_LOW_STOCK_VIEW";
     public static final String REPORT_DASHBOARD_VIEW = "REPORT_DASHBOARD_VIEW";
+    public static final String SALES_RETURN_VIEW = "SALES_RETURN_VIEW";
+    public static final String SALES_RETURN_CREATE = "SALES_RETURN_CREATE";
+    public static final String SALES_RETURN_UPDATE = "SALES_RETURN_UPDATE";
+    public static final String SALES_RETURN_CONFIRM = "SALES_RETURN_CONFIRM";
+    public static final String SALES_RETURN_CANCEL = "SALES_RETURN_CANCEL";
+    public static final String REFUND_VIEW = "REFUND_VIEW";
+    public static final String REFUND_CREATE = "REFUND_CREATE";
+    public static final String REFUND_CANCEL = "REFUND_CANCEL";
     public static final Set<String> ALL = Set.of(
+            SALES_RETURN_VIEW, SALES_RETURN_CREATE, SALES_RETURN_UPDATE, SALES_RETURN_CONFIRM, SALES_RETURN_CANCEL, REFUND_VIEW, REFUND_CREATE, REFUND_CANCEL,
             REPORT_INVENTORY_VIEW, REPORT_SALES_VIEW, REPORT_PAYMENT_VIEW, REPORT_RECEIVABLE_VIEW,
             REPORT_LOW_STOCK_VIEW, REPORT_DASHBOARD_VIEW,
             DASHBOARD_VIEW,

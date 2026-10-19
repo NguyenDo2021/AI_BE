@@ -1,3 +1,5 @@
+> Cập nhật V15/V16: trả hàng, hoàn tiền, settlement và schema báo cáo hiện hành: [returns-refunds-api.md](returns-refunds-api.md). Các ví dụ/schema bên dưới là trước phần mở rộng; các câu nói chưa hỗ trợ trả/hoàn được thay thế bởi tài liệu mới.
+
 # Thanh toán và công nợ khách hàng
 
 Các route bên dưới có tiền tố `/api`, cần `Authorization: Bearer <token>`.

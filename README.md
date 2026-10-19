@@ -185,3 +185,7 @@ Báo cáo và Dashboard: [API, quyền và ví dụ dữ liệu](docs/reports-ap
 File triển khai và kết quả kiểm thử: [reports verification](docs/reports-verification.md).
 
 Xuất Excel báo cáo: [API contract và hướng dẫn FE](docs/report-excel-export.md), [kết quả kiểm thử](docs/report-excel-verification.md).
+
+## Sales returns and refunds
+
+Transactional returns/refunds, revised settlement and reports: [API and FE integration](docs/returns-refunds-api.md), [verification](docs/returns-refunds-verification.md). New migrations V15/V16; no automatic role grants.

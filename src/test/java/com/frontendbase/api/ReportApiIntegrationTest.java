@@ -592,7 +592,7 @@ class ReportApiIntegrationTest {
             String period = "from=2026-10-12&to=2026-10-12";
             var api = report(kind + "?" + period);
             try (var wb = workbook(exportBytes(kind + "/export?" + period, admin))) {
-                var summary = wb.getSheet("Tổng hợp"); assertEquals(9, summary.getPhysicalNumberOfRows());
+                var summary = wb.getSheet("Tổng hợp"); assertEquals(kind.equals("sales") ? 10 : 19, summary.getPhysicalNumberOfRows());
                 var fields = api.get("summary").fields(); int i = 0;
                 while (fields.hasNext()) assertEquals(fields.next().getValue().asLong(), summary.getRow(i++).getCell(1).getNumericCellValue());
                 assertEquals(-20, summary.getRow(8).getCell(1).getNumericCellValue());
