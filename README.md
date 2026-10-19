@@ -189,3 +189,7 @@ Xuất Excel báo cáo: [API contract và hướng dẫn FE](docs/report-excel-e
 ## Sales returns and refunds
 
 Transactional returns/refunds, revised settlement and reports: [API and FE integration](docs/returns-refunds-api.md), [verification](docs/returns-refunds-verification.md). New migrations V15/V16; no automatic role grants.
+
+## Hướng dẫn sử dụng app
+
+Tài liệu dành cho người mới: [Hướng dẫn sử dụng chi tiết](docs/huong-dan-su-dung.md), gồm thao tác từng màn hình, luồng nhập kho–bán hàng–thu tiền–trả hàng–hoàn tiền, kiểm kê, báo cáo và xử lý lỗi.
