@@ -43,7 +43,8 @@ public final class PaymentDtos {
         }
 
         public record OrderPaymentSummary(UUID salesOrderId, long totalAmount, long paidAmount,
-                        long remainingAmount, PaymentStatus paymentStatus) {
+                        long remainingAmount, PaymentStatus paymentStatus, long returnedAmount, long adjustedTotalAmount,
+                        long refundedAmount, long netPaidAmount, long refundableAmount) {
         }
 
         public record MutationResponse(PaymentResponse payment, OrderPaymentSummary order) {

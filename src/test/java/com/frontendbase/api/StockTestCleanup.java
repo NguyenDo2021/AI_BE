@@ -13,11 +13,14 @@ final class StockTestCleanup {
             // TRUNCATE is only used for the isolated test database and bypasses audit
             // DELETE guards.
             jdbc.execute(
-                    "TRUNCATE stocktake_lines, stocktakes, payments, inventory_movements, inventory_balances, stock_receipt_lines, stock_receipts, sales_order_lines, sales_orders, customers");
+                    "TRUNCATE sales_return_lines, sales_returns, refunds, stocktake_lines, stocktakes, payments, inventory_movements, inventory_balances, stock_receipt_lines, stock_receipts, sales_order_lines, sales_orders, customers");
             return;
         }
-        jdbc.execute("DELETE FROM payments");
+        jdbc.execute("DELETE FROM refunds");
         jdbc.execute("DELETE FROM inventory_movements");
+        jdbc.execute("DELETE FROM sales_return_lines");
+        jdbc.execute("DELETE FROM sales_returns");
+        jdbc.execute("DELETE FROM payments");
         jdbc.execute("DELETE FROM inventory_balances");
         jdbc.execute("DELETE FROM stocktake_lines");
         jdbc.execute("DELETE FROM stocktakes");

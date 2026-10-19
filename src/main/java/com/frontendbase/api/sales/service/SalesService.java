@@ -142,9 +142,11 @@ public class SalesService {
         if (r.status() == SalesStatus.CANCELLED)
             return r;
         version(r, p.version());
+        if (repository.jdbc().queryForObject("SELECT count(*) FROM sales_returns WHERE sales_order_id=? AND status='CONFIRMED'", Long.class, id)>0)
+            throw operations.conflict("SALES_ORDER_HAS_RETURNS", "Sales orders with confirmed returns cannot be cancelled");
         if (r.paidAmount() > 0)
             throw operations.conflict("SALES_ORDER_HAS_PAYMENTS",
-                    "Cannot cancel a paid sales order; refunds are not supported");
+                    "Cannot cancel a sales order with active payments");
         boolean reverse = r.status() == SalesStatus.CONFIRMED;
         if (reverse && !Boolean.TRUE.equals(p.goodsReturned()))
             throw new ApiException(HttpStatus.BAD_REQUEST, "GOODS_RETURNED_REQUIRED",

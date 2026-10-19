@@ -91,7 +91,7 @@ public class GlobalExceptionHandler {
                         HttpStatus status,
                         String code,
                         String message,
-                        Map<String, String> details,
+                        Map<String, ?> details,
                         HttpServletRequest request) {
                 return ResponseEntity.status(status).contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(new ApiErrorResponse(
                                 Instant.now(),

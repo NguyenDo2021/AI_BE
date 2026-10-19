@@ -52,6 +52,7 @@ public final class SalesDtos {
                         long remainingAmount, PaymentStatus paymentStatus, long version,
                         UUID createdBy, Instant createdAt, Instant updatedAt, UUID confirmedBy, Instant confirmedAt,
                         UUID cancelledBy, Instant cancelledAt, String cancellationReason, Boolean goodsReturned,
-                        CustomerSnapshot customerSnapshot, List<LineResponse> lines) {
+                        CustomerSnapshot customerSnapshot, List<LineResponse> lines,
+                        long returnedAmount, long adjustedTotalAmount, long refundedAmount, long netPaidAmount, long refundableAmount) {
         }
 }

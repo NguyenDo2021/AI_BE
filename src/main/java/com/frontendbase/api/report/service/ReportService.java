@@ -17,8 +17,9 @@ import lombok.RequiredArgsConstructor;
 public class ReportService {
     private final ReportRepository repository;
     private final ReportAccess access;
-    public static final String SALES_DESCRIPTION = "Event-based sales value by confirmedAt/cancelledAt; not profit, cost of goods or VAT";
-    public static final String PAYMENT_DESCRIPTION = "Thu tiền ghi nhận theo thời gian hệ thống (createdAt/cancelledAt); cancellation reverses an incorrect record, not a refund or reconciled bank cash flow";
+    private final com.frontendbase.api.payment.service.PaymentAccess paymentAccess;
+    public static final String SALES_DESCRIPTION = "Event-based sales and returns by confirmedAt/cancelledAt; not profit, cost of goods or VAT";
+    public static final String PAYMENT_DESCRIPTION = "System collection/refund records by createdAt/cancelledAt, not business dates or bank reconciliation. netRecordedAmount is net collections; netRefundedAmount is net refunds; netCashFlowAmount is their difference. Cancellation reverses an incorrect record.";
 
     private void pagination(int page, int size) {
         if (page < 1 || size < 1 || size > 100)
@@ -75,12 +76,13 @@ public class ReportService {
         var lowStock = access.allowed("REPORT_LOW_STOCK_VIEW")
                 ? new LowStockSummary(repository.lowStockCount(scope), generatedAt)
                 : null;
+        var refunds = paymentAccess.allowed("REFUND_VIEW") ? repository.refundables(scope, generatedAt) : null;
         return new Dashboard(generatedAt, period.response(),
                 sales == null && payments == null ? null
                         : new PeriodSections(sales, payments,
                                 SALES_DESCRIPTION + "; " + PAYMENT_DESCRIPTION),
-                receivables == null && lowStock == null ? null
+                receivables == null && lowStock == null && refunds == null ? null
                         : new CurrentSections(receivables, lowStock,
-                                "Current data read in one repeatable-read snapshot; independent of the selected period"));
+                                "Current data read in one repeatable-read snapshot; independent of the selected period", refunds));
     }
 }

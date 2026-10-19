@@ -56,7 +56,7 @@ public class ReportController {
 
     @GetMapping("/receivables-summary")
     @PreAuthorize("@reportAccess.allowed('REPORT_RECEIVABLE_VIEW')")
-    @Operation(summary = "Current receivables", description = "CONFIRMED outstanding orders less ACTIVE payments; no period filter")
+    @Operation(summary = "Current receivables", description = "Current adjusted order totals less net ACTIVE collections/refunds; no period filter")
     public ReceivablesSummary receivables(@RequestParam(required = false) UUID warehouseId,
             @RequestParam Map<String, String> query) {
         currentOnly(query);
