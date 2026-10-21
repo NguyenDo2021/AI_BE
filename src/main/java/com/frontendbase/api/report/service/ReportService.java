@@ -66,6 +66,26 @@ public class ReportService {
         return repository.lowStock(access.scope(warehouse), product, page, size);
     }
 
+    public DashboardTrends trends(UUID warehouse, String from, String to) {
+        var period = ReportPeriod.parseTrends(from, to);
+        var scope = access.scope(warehouse);
+        Instant generatedAt = Instant.now();
+        boolean showSales = access.allowed("REPORT_SALES_VIEW");
+        boolean showPayments = access.allowed("REPORT_PAYMENT_VIEW");
+        var sales = showSales ? repository.salesTrends(scope, period)
+                : java.util.Map.<java.time.LocalDate, SalesTrend>of();
+        var payments = showPayments ? repository.paymentTrends(scope, period)
+                : java.util.Map.<java.time.LocalDate, PaymentTrend>of();
+        var zeroSales = new SalesTrend(0, 0, 0, 0);
+        var zeroPayments = new PaymentTrend(0, 0, 0);
+        var items = period.from().datesUntil(period.to().plusDays(1))
+                .map(date -> new TrendItem(date,
+                        showSales ? sales.getOrDefault(date, zeroSales) : null,
+                        showPayments ? payments.getOrDefault(date, zeroPayments) : null))
+                .toList();
+        return new DashboardTrends(generatedAt, period.response(), items);
+    }
+
     public Dashboard dashboard(UUID warehouse, String from, String to) {
         var period = ReportPeriod.parse(from, to);
         var scope = access.scope(warehouse);
@@ -83,6 +103,7 @@ public class ReportService {
                                 SALES_DESCRIPTION + "; " + PAYMENT_DESCRIPTION),
                 receivables == null && lowStock == null && refunds == null ? null
                         : new CurrentSections(receivables, lowStock,
-                                "Current data read in one repeatable-read snapshot; independent of the selected period", refunds));
+                                "Current data read in one repeatable-read snapshot; independent of the selected period",
+                                refunds));
     }
 }

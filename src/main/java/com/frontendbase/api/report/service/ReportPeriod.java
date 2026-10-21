@@ -25,6 +25,14 @@ public record ReportPeriod(LocalDate from, LocalDate to) {
         }
     }
 
+    public static ReportPeriod parseTrends(String from, String to) {
+        var period = parse(from, to);
+        if (java.time.temporal.ChronoUnit.DAYS.between(period.from(), period.to()) >= 366)
+            throw new ApiException(HttpStatus.BAD_REQUEST, "REPORT_PERIOD_TOO_LARGE",
+                    "Dashboard trends support at most 366 days, inclusive");
+        return period;
+    }
+
     public Timestamp start() {
         return Timestamp.from(from.atStartOfDay(ZONE).toInstant());
     }

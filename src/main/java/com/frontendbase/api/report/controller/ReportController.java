@@ -73,6 +73,14 @@ public class ReportController {
         return service.lowStock(warehouseId, productId, page, pageSize);
     }
 
+    @GetMapping("/dashboard/trends")
+    @PreAuthorize("@reportAccess.allowed('REPORT_DASHBOARD_VIEW')")
+    @Operation(summary = "Daily dashboard trends", description = "Inclusive range up to 366 Vietnam calendar days; sales/payments require their report permission and are omitted otherwise; no pagination")
+    public DashboardTrends trends(@RequestParam(required = false) UUID warehouseId,
+            @RequestParam(required = false) String from, @RequestParam(required = false) String to) {
+        return service.trends(warehouseId, from, to);
+    }
+
     @GetMapping("/dashboard")
     @PreAuthorize("@reportAccess.allowed('REPORT_DASHBOARD_VIEW')")
     @Operation(summary = "Dashboard", description = "Each section requires its corresponding report permission; unauthorized sections are omitted")
