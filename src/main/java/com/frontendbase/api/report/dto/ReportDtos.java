@@ -21,7 +21,8 @@ public final class ReportDtos {
 
         public record SalesSummary(long confirmedOrderCount, long cancelledConfirmedOrderCount,
                         long confirmedQuantity, long cancelledQuantity, long grossSalesAmount, long discountAmount,
-                        long confirmedSalesAmount, long cancelledSalesAmount, long netSalesAmount, long returnedSalesAmount) {
+                        long confirmedSalesAmount, long cancelledSalesAmount, long netSalesAmount,
+                        long returnedSalesAmount) {
         }
 
         public record SalesRow(UUID warehouseId, String warehouseCode, String warehouseName,
@@ -59,12 +60,29 @@ public final class ReportDtos {
         public record LowStockSummary(long lowStockPairCount, Instant asOf) {
         }
 
+        public record SalesTrend(long confirmedSalesAmount, long cancelledSalesAmount,
+                        long returnedSalesAmount, long netSalesAmount) {
+        }
+
+        public record PaymentTrend(long netRecordedAmount, long netRefundedAmount, long netCashFlowAmount) {
+        }
+
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        public record TrendItem(LocalDate date, SalesTrend sales, PaymentTrend payments) {
+        }
+
+        public record DashboardTrends(Instant generatedAt, Period period, List<TrendItem> items) {
+        }
+
         public record PeriodSections(SalesSummary sales, PaymentSummary payments, String timeBasis) {
         }
 
-        public record RefundablesSummary(long refundableOrderCount, long refundableAmount, Instant asOf) {}
+        public record RefundablesSummary(long refundableOrderCount, long refundableAmount, Instant asOf) {
+        }
+
         @JsonInclude(JsonInclude.Include.NON_NULL)
-        public record CurrentSections(ReceivablesSummary receivables, LowStockSummary lowStock, String timeBasis, RefundablesSummary refunds) {
+        public record CurrentSections(ReceivablesSummary receivables, LowStockSummary lowStock, String timeBasis,
+                        RefundablesSummary refunds) {
         }
 
         @JsonInclude(JsonInclude.Include.NON_NULL)

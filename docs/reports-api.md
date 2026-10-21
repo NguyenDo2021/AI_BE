@@ -32,6 +32,7 @@ Transaction readOnly, REPEATABLE_READ giữ items/count/summary/dashboard cùng 
 | /api/reports/payments | REPORT_PAYMENT_VIEW | warehouseId?, from, to, page?, pageSize? |
 | /api/reports/receivables-summary | REPORT_RECEIVABLE_VIEW | warehouseId? |
 | /api/reports/low-stock | REPORT_LOW_STOCK_VIEW | warehouseId?, productId?, page?, pageSize? |
+| /api/reports/dashboard/trends | REPORT_DASHBOARD_VIEW + quyền series | warehouseId?, from, to (tối đa 366 ngày, không phân trang) |
 | /api/reports/dashboard | REPORT_DASHBOARD_VIEW + quyền section | warehouseId?, from, to |
 
 receivables-summary/low-stock từ chối from/to (400 INVALID_REQUEST).
@@ -183,3 +184,5 @@ Ví dụ lỗi:
 
 Xuất Excel inventory/sales/payments/low-stock: [API contract và hướng dẫn FE](report-excel-export.md). Chưa triển khai PDF báo cáo, biểu đồ FE, giá vốn, lợi nhuận, VAT hay công nợ lịch sử.
 File thay đổi/kết quả thực chạy: [reports-verification.md](reports-verification.md).
+
+API biểu đồ theo ngày và cơ cấu thu dashboard: [contract](dashboard-trends-api.md).
