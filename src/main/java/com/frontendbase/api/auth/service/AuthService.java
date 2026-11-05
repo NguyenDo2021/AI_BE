@@ -8,6 +8,7 @@ import com.frontendbase.api.common.exception.ApiException;
 import com.frontendbase.api.security.service.JwtService;
 import com.frontendbase.api.user.entity.UserAccount;
 import com.frontendbase.api.user.repository.UserRepository;
+import com.frontendbase.api.warehouse.service.WarehouseAccess;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -33,17 +34,20 @@ public class AuthService {
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final JwtService jwtService;
+    private final WarehouseAccess warehouseAccess;
 
     public AuthService(
             AuthenticationManager authenticationManager,
             UserRepository userRepository,
             RefreshTokenRepository refreshTokenRepository,
-            JwtService jwtService
+            JwtService jwtService,
+            WarehouseAccess warehouseAccess
     ) {
         this.authenticationManager = authenticationManager;
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.jwtService = jwtService;
+        this.warehouseAccess = warehouseAccess;
     }
 
     @Transactional
@@ -82,15 +86,21 @@ public class AuthService {
         UserAccount user = userRepository.findWithRolesAndPermissionsById(userId)
                 .filter(account -> account.getStatus() == 1)
                 .orElseThrow(() -> unauthorized("Tài khoản không hoạt động"));
-        return toAuthUser(user);
+        return new AuthUserResponse(
+                user.getId(),
+                user.getUsername(),
+                user.getFullName(),
+                user.getEmail(),
+                permissionsFor(user),
+                warehouseAccess.isAdmin()
+        );
     }
 
     private AuthTokensResponse createTokens(UserAccount user) {
-        AuthUserResponse currentUser = toAuthUser(user);
         String accessToken = jwtService.createAccessToken(
                 user.getId().toString(),
                 user.getUsername(),
-                currentUser.permissions()
+                permissionsFor(user)
         );
         String refreshToken = generateRefreshToken();
         RefreshToken storedToken = new RefreshToken();
@@ -101,20 +111,13 @@ public class AuthService {
         return new AuthTokensResponse(accessToken, refreshToken);
     }
 
-    private AuthUserResponse toAuthUser(UserAccount user) {
-        List<String> permissions = user.getRoles().stream()
+    private List<String> permissionsFor(UserAccount user) {
+        return user.getRoles().stream()
                 .flatMap(role -> role.getPermissions().stream())
                 .map(permission -> permission.getCode())
                 .distinct()
                 .sorted()
                 .toList();
-        return new AuthUserResponse(
-                user.getId(),
-                user.getUsername(),
-                user.getFullName(),
-                user.getEmail(),
-                permissions
-        );
     }
 
     private String generateRefreshToken() {

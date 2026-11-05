@@ -16,7 +16,7 @@ Spring Boot REST API được thiết kế theo contract của frontend Vue hi�
 |---|---|---|---|---|
 | `loginApi` | `POST /api/auth/login` | `{ username, password }` | `{ accessToken, refreshToken }` | Public |
 | `refreshTokenApi` | `POST /api/auth/refresh` | `{ refreshToken }` | `{ accessToken, refreshToken }` (rotated) | Public; refresh token required |
-| `getUserInfoApi` | `GET /api/auth/me` | `Authorization: Bearer <accessToken>` | `{ id, username, fullName, email, permissions: string[] }` | Authenticated |
+| `getUserInfoApi` | `GET /api/auth/me` | `Authorization: Bearer <accessToken>` | `{ id, username, fullName, email, permissions: string[], isAdmin: boolean }` | Authenticated |
 | `getUserList` | `GET /api/users?page=&pageSize=&keyword=&status=` | Query: page (1-based), pageSize (1-100), optional keyword/status (0/1) | `{ items: User[], total, page, pageSize }` | `USER_VIEW` |
 | `getUser` | `GET /api/users/{id}` | UUID string path ID | `User` | `USER_VIEW` |
 | `createUser` | `POST /api/users` | `{ username, fullName, email, phone?, status }` | `User` (201) | `USER_CREATE` |
@@ -31,6 +31,8 @@ Spring Boot REST API được thiết kế theo contract của frontend Vue hi�
 `User` is `{ id: string, username, fullName, email, phone?, status: number, createdAt?: ISO-8601 string }`. `Role` is `{ id: string, name, code, description?, status: number, createdAt: ISO-8601 string, updatedAt?: ISO-8601 string }`. Login, refresh, me, list, and detail responses are direct JSON values; they are not wrapped in `{ data: ... }`. Error bodies are `{ timestamp, status, code, message, details }`, so the current Axios error normalizer can consume `message`, `code`, and `details`.
 
 Error status compatibility: 400 validation/request, 401 missing/invalid/expired session, 403 permission denied, 404 missing user or role, 500 unexpected server error. Duplicate account or role fields use 409 Conflict.
+
+`GET /api/auth/me` always includes the JSON boolean `isAdmin` and returns `Cache-Control: no-store`. It checks the active account and active `ADMIN` role assignment in the database on every request using the same `WarehouseAccess.isAdmin()` logic as business APIs. No warehouse assignment or administrative permission is required. The existing `permissions` response still comes from the database; JWT permission authorities for business requests remain unchanged. Frontend should use this field directly instead of calling user administration APIs to determine Admin status. See [the current-user contract and validation report](docs/auth-me-admin.md).
 
 ## Role management API contract
 
