@@ -8,6 +8,8 @@ import com.frontendbase.api.auth.service.AuthService;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -36,7 +38,9 @@ public class AuthController {
 
     @GetMapping("/me")
     @SecurityRequirement(name = "bearerAuth")
-    public AuthUserResponse currentUser(@AuthenticationPrincipal String userId) {
-        return authService.getCurrentUser(UUID.fromString(userId));
+    public ResponseEntity<AuthUserResponse> currentUser(@AuthenticationPrincipal String userId) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(authService.getCurrentUser(UUID.fromString(userId)));
     }
 }
